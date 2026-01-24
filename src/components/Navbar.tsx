@@ -17,9 +17,10 @@ export default function Navbar() {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="fixed top-6 left-1/2 -translate-x-1/2 z-50"
+      className="fixed top-6 left-0 right-0 z-50 flex justify-center px-6"
     >
-      <nav className="glass-nav px-6 py-3 inline-flex items-center gap-8">
+      <nav className="glass-nav w-full max-w-2xl px-6 py-3 flex items-center justify-between">
+        {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2 logo-shine overflow-hidden">
           <img 
             src={buildifyLogo} 
@@ -29,7 +30,8 @@ export default function Navbar() {
           <span className="text-base font-semibold text-foreground">Buildify</span>
         </Link>
 
-        <div className="flex items-center gap-5">
+        {/* Links on the right */}
+        <div className="flex items-center gap-6">
           {navLinks.map((link) => (
             <Link
               key={link.href}
