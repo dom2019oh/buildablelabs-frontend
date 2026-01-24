@@ -25,7 +25,7 @@ export default function Navbar() {
           <img 
             src={buildifyLogo} 
             alt="Buildify" 
-            className="h-7 w-7 object-contain"
+            className="h-10 w-10 object-contain"
           />
           <span className="text-base font-semibold text-foreground">Buildify</span>
         </Link>
