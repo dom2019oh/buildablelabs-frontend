@@ -17,19 +17,19 @@ export default function Navbar() {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-[min(980px,calc(100vw-3rem))]"
+      className="fixed top-6 right-6 z-50"
     >
-      <nav className="glass-nav w-full px-6 py-3 flex items-center justify-between gap-6">
+      <nav className="glass-nav px-5 py-2.5 flex items-center gap-6">
         <Link to="/" className="flex items-center gap-2 logo-shine overflow-hidden">
           <img 
             src={buildifyLogo} 
             alt="Buildify" 
-            className="h-8 w-8 object-contain"
+            className="h-7 w-7 object-contain"
           />
-          <span className="text-lg font-semibold text-foreground">Buildify</span>
+          <span className="text-base font-semibold text-foreground">Buildify</span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-6">
+        <div className="flex items-center gap-5">
           {navLinks.map((link) => (
             <Link
               key={link.href}
@@ -43,21 +43,6 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link
-            to="/log-in"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Log in
-          </Link>
-          <Link
-            to="/sign-up"
-            className="gradient-button text-sm py-2 px-4"
-          >
-            Get Started
-          </Link>
         </div>
       </nav>
     </motion.header>
