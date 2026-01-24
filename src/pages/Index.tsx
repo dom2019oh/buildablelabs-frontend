@@ -53,6 +53,7 @@ export default function Index() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
               className="text-4xl md:text-5xl font-bold mb-12"
+              style={{ fontFamily: "'Sora', sans-serif" }}
             >
               <ShinyText
                 text={`Let's get your build going, ${loading ? "..." : userName}`}
