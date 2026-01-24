@@ -156,7 +156,7 @@
       hsl(0 0% 100% / 0.3) 55%,
       transparent 60%
     );
-    animation: shine 3s ease-in-out infinite;
+    animation: shine 6s ease-in-out infinite;
   }
 
   @keyframes shine {

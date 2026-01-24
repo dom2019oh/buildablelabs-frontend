@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Zap, Code2, Layers, Rocket, Plus, Globe, Mic, Send, Settings } from 'lucide-react';
+import { Sparkles, ArrowRight, Zap, Code2, Layers, Rocket, Plus, Paperclip, MessageSquare, AudioLines, ChevronDown } from 'lucide-react';
 import Aurora from '@/components/Aurora';
 import Navbar from '@/components/Navbar';
 
@@ -31,11 +31,13 @@ const features = [
 export default function Index() {
   const [prompt, setPrompt] = useState('');
   const navigate = useNavigate();
+  
+  // For demo purposes, using a static name. In a real app, this would come from auth context
+  const userName = 'User';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (prompt.trim()) {
-      // Navigate to a new project with the prompt
       navigate('/sign-up');
     }
   };
@@ -62,93 +64,67 @@ export default function Index() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="text-center max-w-4xl mx-auto"
+            className="text-center max-w-3xl mx-auto w-full"
           >
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="inline-flex items-center gap-2 glass-card px-4 py-2 mb-8"
-            >
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span className="text-sm text-muted-foreground">AI-Powered Product Builder</span>
-            </motion.div>
-
             {/* Headline */}
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
+              className="text-4xl md:text-5xl font-bold mb-10 text-foreground"
             >
-              <span className="text-gradient-aurora">Turn intent into</span>
-              <br />
-              <span className="text-foreground">working software</span>
+              Let's build something, {userName}
             </motion.h1>
 
-            {/* Subheadline */}
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto"
-            >
-              Build websites, SaaS, and mobile apps in minutes by chatting with AI.
-              <br />
-              Everything is included: database, hosting, AI, and more.
-              <br />
-              <span className="text-foreground/80">No coding skills required.</span>
-            </motion.p>
-
-            {/* Prompt Input Box */}
+            {/* Prompt Input Box - Matching screenshot style */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              className="w-full max-w-3xl mx-auto mb-8"
+              transition={{ duration: 0.6, delay: 0.3 }}
+              className="w-full max-w-2xl mx-auto mb-8"
             >
-              <form onSubmit={handleSubmit} className="glass-card p-4 input-glow">
+              <form onSubmit={handleSubmit} className="glass-card p-4 input-glow rounded-2xl">
                 {/* Main Input Area */}
                 <div className="mb-4">
                   <input
                     type="text"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Clone google.com"
-                    className="w-full bg-transparent text-lg focus:outline-none placeholder:text-muted-foreground/50"
+                    placeholder="Ask Buildify to create a dashboard to..."
+                    className="w-full bg-transparent text-base focus:outline-none placeholder:text-muted-foreground/50 text-foreground"
                   />
                 </div>
 
                 {/* Bottom Toolbar */}
-                <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                  <div className="flex items-center gap-2">
-                    <button type="button" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                      <Plus className="w-5 h-5" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <button type="button" className="w-9 h-9 rounded-full border border-border/50 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border transition-colors">
+                      <Plus className="w-4 h-4" />
                     </button>
-                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      <Settings className="w-4 h-4" />
-                      Auto
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors">
+                      <Paperclip className="w-4 h-4" />
+                      Attach
                     </button>
-                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors">
                       <Sparkles className="w-4 h-4" />
                       Theme
+                      <ChevronDown className="w-3 h-3" />
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      <Globe className="w-4 h-4" />
-                      Public
+                  <div className="flex items-center gap-1">
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors">
+                      <MessageSquare className="w-4 h-4" />
+                      Chat
                     </button>
-                    <button type="button" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                      <Mic className="w-5 h-5" />
+                    <button type="button" className="w-9 h-9 rounded-full border border-border/50 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border transition-colors">
+                      <AudioLines className="w-4 h-4" />
                     </button>
                     <button 
                       type="submit" 
-                      className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/90 transition-colors"
+                      className="w-9 h-9 rounded-full bg-foreground flex items-center justify-center text-background hover:bg-foreground/90 transition-colors"
                     >
-                      <Send className="w-5 h-5" />
+                      <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -159,7 +135,7 @@ export default function Index() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
               className="flex flex-col sm:flex-row items-center justify-center gap-4"
             >
               <Link to="/sign-up" className="gradient-button flex items-center gap-2">
