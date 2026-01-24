@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Plus, Paperclip, MessageSquare, AudioLines, ChevronDown } from 'lucide-react';
+import { ArrowRight, Plus, MessageSquare } from 'lucide-react';
 import Aurora from '@/components/Aurora';
 import Navbar from '@/components/Navbar';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,9 +26,9 @@ export default function Index() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div className="relative min-h-[120vh] overflow-hidden bg-background">
       {/* Aurora Background - Limited to top area */}
-      <div className="absolute top-0 left-0 right-0 h-[70vh] z-0 overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-[60vh] z-0 overflow-hidden">
         <Aurora
           colorStops={["#de66ff", "#2ccea6", "#5227FF"]}
           blend={0.5}
@@ -36,15 +36,15 @@ export default function Index() {
           speed={1}
         />
         {/* Gradient fade to background */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-background to-transparent" />
       </div>
 
       {/* Content */}
       <div className="relative z-10">
         <Navbar />
 
-        {/* Hero Section */}
-        <section className="min-h-[70vh] flex flex-col items-center justify-center px-6 pt-20">
+        {/* Hero Section - More top padding for spacing from navbar */}
+        <section className="min-h-[80vh] flex flex-col items-center justify-center px-6 pt-40">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -56,17 +56,17 @@ export default function Index() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-4xl md:text-5xl font-bold mb-10 text-foreground"
+              className="text-4xl md:text-5xl font-bold mb-12 text-foreground"
             >
               Let's build something, {loading ? '...' : userName}
             </motion.h1>
 
-            {/* Prompt Input Box */}
+            {/* Prompt Input Box - Simplified */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="w-full max-w-2xl mx-auto mb-8"
+              className="w-full max-w-2xl mx-auto mb-10"
             >
               <form onSubmit={handleSubmit} className="glass-card p-4 input-glow rounded-2xl">
                 {/* Main Input Area */}
@@ -80,20 +80,11 @@ export default function Index() {
                   />
                 </div>
 
-                {/* Bottom Toolbar */}
+                {/* Bottom Toolbar - Simplified */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1">
                     <button type="button" className="w-9 h-9 rounded-full border border-border/50 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border transition-colors">
                       <Plus className="w-4 h-4" />
-                    </button>
-                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors">
-                      <Paperclip className="w-4 h-4" />
-                      Attach
-                    </button>
-                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors">
-                      <Sparkles className="w-4 h-4" />
-                      Theme
-                      <ChevronDown className="w-3 h-3" />
                     </button>
                   </div>
 
@@ -101,9 +92,6 @@ export default function Index() {
                     <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:border-border transition-colors">
                       <MessageSquare className="w-4 h-4" />
                       Chat
-                    </button>
-                    <button type="button" className="w-9 h-9 rounded-full border border-border/50 flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border transition-colors">
-                      <AudioLines className="w-4 h-4" />
                     </button>
                     <button 
                       type="submit" 
@@ -141,8 +129,11 @@ export default function Index() {
           </motion.div>
         </section>
 
+        {/* Spacer for longer page */}
+        <div className="h-48" />
+
         {/* Footer */}
-        <footer className="py-12 px-6 border-t border-border mt-24">
+        <footer className="py-12 px-6 border-t border-border">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">

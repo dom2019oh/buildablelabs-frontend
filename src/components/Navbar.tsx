@@ -19,7 +19,7 @@ export default function Navbar() {
       transition={{ duration: 0.5 }}
       className="fixed top-6 left-0 right-0 z-50 flex justify-center px-6"
     >
-      <nav className="glass-nav w-full max-w-2xl px-5 py-2 flex items-center justify-between logo-shine overflow-hidden">
+      <nav className="glass-nav w-full max-w-4xl px-6 py-2 flex items-center justify-between logo-shine overflow-hidden">
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2">
           <img src={buildifyLogo} alt="Buildify" className="h-14 w-14 object-contain" />
