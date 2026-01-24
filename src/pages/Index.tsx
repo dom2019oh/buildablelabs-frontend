@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { Sparkles, ArrowRight, Zap, Code2, Layers, Rocket } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Sparkles, ArrowRight, Zap, Code2, Layers, Rocket, Plus, Globe, Mic, Send, Settings } from 'lucide-react';
 import Aurora from '@/components/Aurora';
 import Navbar from '@/components/Navbar';
 
@@ -28,6 +29,17 @@ const features = [
 ];
 
 export default function Index() {
+  const [prompt, setPrompt] = useState('');
+  const navigate = useNavigate();
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (prompt.trim()) {
+      // Navigate to a new project with the prompt
+      navigate('/sign-up');
+    }
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       {/* Aurora Background */}
@@ -82,15 +94,72 @@ export default function Index() {
               transition={{ duration: 0.6, delay: 0.3 }}
               className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto"
             >
-              Buildify creates complete, production-ready websites and applications
-              from a single natural language prompt. No boilerplate, no hassle.
+              Build websites, SaaS, and mobile apps in minutes by chatting with AI.
+              <br />
+              Everything is included: database, hosting, AI, and more.
+              <br />
+              <span className="text-foreground/80">No coding skills required.</span>
             </motion.p>
+
+            {/* Prompt Input Box */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="w-full max-w-3xl mx-auto mb-8"
+            >
+              <form onSubmit={handleSubmit} className="glass-card p-4 input-glow">
+                {/* Main Input Area */}
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="Clone google.com"
+                    className="w-full bg-transparent text-lg focus:outline-none placeholder:text-muted-foreground/50"
+                  />
+                </div>
+
+                {/* Bottom Toolbar */}
+                <div className="flex items-center justify-between pt-3 border-t border-border/50">
+                  <div className="flex items-center gap-2">
+                    <button type="button" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+                      <Plus className="w-5 h-5" />
+                    </button>
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <Settings className="w-4 h-4" />
+                      Auto
+                    </button>
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <Sparkles className="w-4 h-4" />
+                      Theme
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <Globe className="w-4 h-4" />
+                      Public
+                    </button>
+                    <button type="button" className="p-2 text-muted-foreground hover:text-foreground transition-colors">
+                      <Mic className="w-5 h-5" />
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      <Send className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </motion.div>
 
             {/* CTA Buttons */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
               className="flex flex-col sm:flex-row items-center justify-center gap-4"
             >
               <Link to="/sign-up" className="gradient-button flex items-center gap-2">
