@@ -105,7 +105,7 @@ export default function Navbar() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/pricing" className="flex items-center gap-3 px-3 py-2 cursor-pointer">
+                    <Link to="/settings" className="flex items-center gap-3 px-3 py-2 cursor-pointer">
                       <Settings className="h-4 w-4 text-muted-foreground" />
                       <span>Settings</span>
                     </Link>

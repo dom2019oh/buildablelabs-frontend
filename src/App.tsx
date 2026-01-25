@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import Docs from "./pages/Docs";
 import Explore from "./pages/Explore";
 import ProjectEditor from "./pages/ProjectEditor";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/log-in" element={<Login />} />
             <Route path="/sign-up" element={<SignUp />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/project/:projectId" element={<ProtectedRoute><ProjectEditor /></ProtectedRoute>} />
