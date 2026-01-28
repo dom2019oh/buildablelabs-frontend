@@ -1,10 +1,5 @@
-import DashboardLayout from '@/components/dashboard/DashboardLayout';
-import ProjectDetailView from '@/components/dashboard/ProjectDetailView';
+import ProjectWorkspace from '@/components/workspace/ProjectWorkspace';
 
 export default function DashboardProject() {
-  return (
-    <DashboardLayout>
-      <ProjectDetailView />
-    </DashboardLayout>
-  );
+  return <ProjectWorkspace />;
 }
