@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_rate_limits: {
+        Row: {
+          created_at: string
+          id: string
+          request_count: number
+          updated_at: string
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          request_count?: number
+          updated_at?: string
+          user_id: string
+          window_start?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          request_count?: number
+          updated_at?: string
+          user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       credit_action_costs: {
         Row: {
           action_type: Database["public"]["Enums"]["credit_action_type"]
@@ -448,6 +475,18 @@ export type Database = {
           message: string
           new_balance: number
           success: boolean
+        }[]
+      }
+      check_ai_rate_limit: {
+        Args: {
+          p_max_requests?: number
+          p_user_id: string
+          p_window_minutes?: number
+        }
+        Returns: {
+          allowed: boolean
+          remaining: number
+          reset_at: string
         }[]
       }
       claim_daily_bonus: {

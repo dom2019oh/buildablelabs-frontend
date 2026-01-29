@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
+import type { Json } from '@/integrations/supabase/types';
 
 export interface ProjectMessage {
   id: string;
@@ -14,8 +15,17 @@ export interface ProjectMessage {
   created_at: string;
 }
 
+interface AIResponse {
+  response: string;
+  metadata: {
+    taskType: string;
+    modelUsed: string;
+    remaining: number | null;
+  };
+}
+
 export function useProjectMessages(projectId: string | undefined) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -71,19 +81,24 @@ export function useProjectMessages(projectId: string | undefined) {
     };
   }, [projectId, user?.id, queryClient]);
 
-  // Send a message
+  // Send a message to the database
   const sendMessage = useMutation({
-    mutationFn: async ({ content, role = 'user' }: { content: string; role?: 'user' | 'assistant' }) => {
+    mutationFn: async ({ content, role = 'user', metadata = {} }: { 
+      content: string; 
+      role?: 'user' | 'assistant';
+      metadata?: Json;
+    }) => {
       if (!projectId || !user?.id) throw new Error('Missing project or user');
 
       const { data, error } = await supabase
         .from('project_messages')
-        .insert({
+        .insert([{
           project_id: projectId,
           user_id: user.id,
           role,
           content,
-        })
+          metadata,
+        }])
         .select()
         .single();
 
@@ -111,18 +126,75 @@ export function useProjectMessages(projectId: string | undefined) {
     },
   });
 
-  // Simulate AI response (placeholder for actual AI integration)
+  // Call AI edge function
+  const callAI = async (message: string, conversationHistory: Array<{ role: string; content: string }>): Promise<AIResponse> => {
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await supabase.functions.invoke('ai-chat', {
+      body: {
+        projectId,
+        message,
+        conversationHistory,
+      },
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message || 'AI request failed');
+    }
+
+    // Check for rate limit error in response data
+    if (response.data?.error) {
+      throw new Error(response.data.message || response.data.error);
+    }
+
+    return response.data as AIResponse;
+  };
+
+  // Send message and get AI response
   const sendWithAIResponse = async (content: string) => {
+    // Get current messages for context
+    const currentMessages = messagesQuery.data || [];
+
     // Send user message
     await sendMessage.mutateAsync({ content, role: 'user' });
 
-    // Simulate AI thinking delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Call AI with conversation history
+      const aiResponse = await callAI(content, currentMessages);
 
-    // Send simulated AI response
-    const aiResponse = `I understand you want to: "${content}". I'm analyzing your project and will help you implement this. This is a demo response—in the full version, I would generate the code and update your live preview!`;
-    
-    await sendMessage.mutateAsync({ content: aiResponse, role: 'assistant' });
+      // Store AI response with metadata
+      await sendMessage.mutateAsync({ 
+        content: aiResponse.response, 
+        role: 'assistant',
+        metadata: aiResponse.metadata as Json,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get AI response';
+      
+      // Check if it's a rate limit error
+      if (errorMessage.includes('Rate limit') || errorMessage.includes('request limit')) {
+        toast({
+          title: 'Rate Limit Reached',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'AI Error',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
+
+      // Store error message as assistant response
+      await sendMessage.mutateAsync({ 
+        content: `I apologize, but I encountered an error: ${errorMessage}. Please try again.`, 
+        role: 'assistant',
+        metadata: { error: true },
+      });
+    }
   };
 
   // Clear all messages for a project
