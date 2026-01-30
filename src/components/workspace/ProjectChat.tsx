@@ -15,7 +15,9 @@ import {
   Brain,
   Code2,
   Palette,
-  FileCode
+  FileCode,
+  Link,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -147,8 +149,8 @@ export default function ProjectChat({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Sparkles className="h-7 w-7 text-primary" />
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Sparkles className="h-8 w-8 text-primary" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Welcome to your project!</h3>
             <p className="text-muted-foreground text-sm max-w-[280px]">
@@ -172,10 +174,10 @@ export default function ProjectChat({
               >
                 {message.role === 'assistant' && (
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Sparkles className="h-3 w-3 text-primary" />
+                    <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Sparkles className="h-4 w-4 text-primary" />
                     </div>
-                    <span className="text-xs font-medium text-muted-foreground">Buildable</span>
+                    <span className="text-sm font-medium text-muted-foreground">Buildable</span>
                     {message.metadata?.modelUsed && (
                       <ModelBadge model={message.metadata.modelUsed as string} />
                     )}
@@ -203,9 +205,37 @@ export default function ProjectChat({
                     >
                       <Copy className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto">
-                      <MoreHorizontal className="h-3 w-3" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto">
+                          <MoreHorizontal className="h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => copyToClipboard(window.location.href + '#message-' + message.id)}>
+                          <Link className="h-4 w-4 mr-2" />
+                          Copy message link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Preview
+                        </DropdownMenuItem>
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground border-t border-border mt-1 pt-1">
+                          <div className="flex justify-between items-center">
+                            <span>Worked for</span>
+                            <span className="font-medium text-foreground">
+                              {message.metadata?.duration ? `${Math.floor(Number(message.metadata.duration) / 60)}m ${Number(message.metadata.duration) % 60}s` : '~15s'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center mt-1">
+                            <span>Credits used</span>
+                            <span className="font-medium text-foreground">
+                              {String(message.metadata?.creditsUsed || 1)}
+                            </span>
+                          </div>
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 )}
               </motion.div>
