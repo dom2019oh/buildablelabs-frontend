@@ -80,7 +80,7 @@ export default function Index() {
                     type="text"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Ask Buildify to create a dashboard to..."
+                    placeholder="Ask Buildable to create a dashboard to..."
                     className="w-full bg-transparent text-base focus:outline-none placeholder:text-muted-foreground/50 text-foreground"
                   />
                 </div>
@@ -147,7 +147,7 @@ export default function Index() {
         <footer className="py-12 px-6 border-t border-border">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">© 2025 Buildify. All rights reserved.</span>
+              <span className="text-sm text-muted-foreground">© 2025 Buildable. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-6">
               <Link to="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">

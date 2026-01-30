@@ -438,39 +438,84 @@ export default function ProjectWorkspace() {
       <ComponentLibraryPanel
         isOpen={isLibraryOpen}
         onClose={() => setIsLibraryOpen(false)}
+        currentPage={currentRoute === '/' ? 'landing page' : currentRoute.replace('/', '')}
         onInsertComponent={async (component) => {
-          // Convert component name to file path
-          const fileName = component.name.replace(/\s+/g, '') + '.tsx';
-          const filePath = `components/${fileName}`;
+          // Close the library panel
+          setIsLibraryOpen(false);
           
-          // Add file to store
-          addFile(filePath, component.code);
+          // Show the chat message from the AI
+          const assistantMessage = component.chatMessage;
           
-          // Save to database
-          try {
-            await saveFiles.mutateAsync([{ path: filePath, content: component.code }]);
+          // Add the AI message to the chat
+          await sendMessage.mutateAsync({
+            content: assistantMessage,
+            role: 'assistant',
+            metadata: { componentInsertion: true, componentName: component.name },
+          });
+          
+          // Wait a moment for UX, then auto-insert
+          setTimeout(async () => {
+            // Convert component name to file path
+            const fileName = component.name.replace(/\s+/g, '') + '.tsx';
+            const filePath = `components/${fileName}`;
             
-            // Create a version snapshot
-            await createVersion.mutateAsync({
-              files: [{ path: filePath, content: component.code }],
-              label: `Added ${component.name} from library`,
-            });
+            // Add file to store
+            addFile(filePath, component.code);
             
-            toast({
-              title: '✅ Component Added',
-              description: `${component.name} has been added to your project`,
-            });
+            // Compile and generate preview
+            const compiledHtml = compileComponentToHtml(component.code);
+            const newPreviewHtml = generatePreviewHtml(compiledHtml);
+            setPreviewHtml(newPreviewHtml);
+            handleRefreshPreview();
             
-            // Switch to code view and select the file
-            setActiveView('code');
-            setSelectedFile(filePath);
-          } catch (error) {
-            toast({
-              title: 'Failed to add component',
-              description: 'There was an error adding the component',
-              variant: 'destructive',
-            });
-          }
+            // Save to database
+            try {
+              await saveFiles.mutateAsync([{ path: filePath, content: component.code }]);
+              
+              // Save preview to database
+              if (projectId) {
+                updateProject.mutate({
+                  id: projectId,
+                  preview_html: newPreviewHtml,
+                });
+              }
+              
+              // Create a version snapshot
+              await createVersion.mutateAsync({
+                files: [{ path: filePath, content: component.code }],
+                previewHtml: newPreviewHtml,
+                label: `Added ${component.name} from library`,
+              });
+              
+              // Add a confirmation message
+              await sendMessage.mutateAsync({
+                content: `✅ Done! I've added **${component.name}** to your project. Check out the preview or view the code in \`${filePath}\`. Everything's looking good! 🎉`,
+                role: 'assistant',
+                metadata: { filesCreated: [filePath] },
+              });
+              
+              setLastFilesCreated([filePath]);
+              
+              toast({
+                title: '✅ Component Added',
+                description: `${component.name} has been added to your project`,
+              });
+              
+              // Switch to preview view to show the component
+              setActiveView('preview');
+            } catch (error) {
+              await sendMessage.mutateAsync({
+                content: `❌ Oops! Something went wrong while adding the component. Let's try again - just ask me to add a ${component.name}!`,
+                role: 'assistant',
+              });
+              
+              toast({
+                title: 'Failed to add component',
+                description: 'There was an error adding the component',
+                variant: 'destructive',
+              });
+            }
+          }, 1500); // Slight delay for UX
         }}
       />
 

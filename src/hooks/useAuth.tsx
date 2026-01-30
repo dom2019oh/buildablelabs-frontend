@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Check if user wants to be remembered
-    const rememberMe = localStorage.getItem('buildify_remember_me') === 'true';
+    const rememberMe = localStorage.getItem('buildable_remember_me') === 'true';
 
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    localStorage.removeItem('buildify_remember_me');
+    localStorage.removeItem('buildable_remember_me');
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);

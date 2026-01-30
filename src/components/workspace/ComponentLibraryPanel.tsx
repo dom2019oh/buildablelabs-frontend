@@ -17,6 +17,66 @@ interface ComponentTemplate {
   tags: string[];
 }
 
+// Randomized insert messages for each category
+const INSERT_MESSAGES: Record<string, string[]> = {
+  navbar: [
+    "Ohh, that's a slick navbar pick! Want me to insert it into your {page}? It'll take just a moment. ⚡",
+    "Great choice on the navigation! Ready to add this to your {page}? Let's make it happen! 🚀",
+    "This navbar is going to look amazing! Shall I drop it into your {page}? Just a few seconds! ✨",
+    "Nice pick! This nav will really elevate your {page}. Ready for me to insert it?",
+    "Ooh, excellent navbar choice! Want this in your {page}? I'll have it done in a flash! 💫",
+  ],
+  hero: [
+    "Now that's a hero section! Ready for me to add it to your {page}? Let's make an impact! 🎯",
+    "Bold choice! This hero will grab attention on your {page}. Shall I insert it?",
+    "Love it! This hero is going to make your {page} shine. Insert now? ✨",
+    "Great hero pick! Want me to drop this into your {page}? Takes just seconds!",
+    "That's a powerful first impression! Ready to add it to your {page}? 🚀",
+  ],
+  features: [
+    "Perfect features section! Ready to showcase what you offer on your {page}? 💎",
+    "This features layout is clean! Want me to add it to your {page}?",
+    "Great choice! These features will really sell it on your {page}. Insert now?",
+    "Love the bento grid! Ready for me to drop this into your {page}? ✨",
+    "That's going to look amazing! Shall I insert this into your {page}? 🔥",
+  ],
+  pricing: [
+    "Smart pricing section pick! Ready to add it to your {page}? Let's get those conversions! 💰",
+    "This pricing layout is clean! Want me to insert it into your {page}?",
+    "Great choice! This will make pricing crystal clear on your {page}. Ready?",
+    "Ooh, nice pricing table! Shall I drop this into your {page}? ✨",
+    "That's a conversion-ready pricing section! Insert into your {page}? 📈",
+  ],
+  testimonials: [
+    "Social proof! This testimonials section will build trust on your {page}. Insert now? 💬",
+    "Great testimonials pick! Ready to add some social proof to your {page}?",
+    "Love it! These testimonials will convince visitors. Add to your {page}? ⭐",
+    "Nice choice! Social proof is key. Want me to insert this into your {page}?",
+    "Perfect for building trust! Ready for me to add this to your {page}? 🌟",
+  ],
+  cta: [
+    "That's a compelling CTA! Ready to drive action on your {page}? Let's do it! 🎯",
+    "Great CTA choice! Want me to add this conversion magnet to your {page}?",
+    "This CTA is going to convert! Shall I insert it into your {page}? 💫",
+    "Bold call-to-action! Ready to add it to your {page}? Takes just seconds!",
+    "Love it! This CTA will get clicks. Insert into your {page}? 🚀",
+  ],
+  footer: [
+    "Nice footer! The perfect way to wrap up your {page}. Want me to insert it? 📋",
+    "Clean footer choice! Ready to add it to your {page}?",
+    "That's a solid footer! Shall I drop this into your {page}? ✨",
+    "Great footer pick! Want me to add the finishing touch to your {page}?",
+    "Perfect ending! Ready for me to insert this footer into your {page}? 🎬",
+  ],
+};
+
+// Get a random message for a category
+function getRandomInsertMessage(category: string, pageName: string = 'landing page'): string {
+  const messages = INSERT_MESSAGES[category] || INSERT_MESSAGES.features;
+  const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+  return randomMessage.replace('{page}', pageName);
+}
+
 const componentTemplates: ComponentTemplate[] = [
   // NAVBAR TEMPLATES
   {
@@ -584,13 +644,15 @@ const categoryLabels = {
 interface ComponentLibraryPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  onInsertComponent: (component: { name: string; code: string }) => void;
+  onInsertComponent: (component: { name: string; code: string; category: string; chatMessage: string }) => void;
+  currentPage?: string;
 }
 
 export default function ComponentLibraryPanel({
   isOpen,
   onClose,
   onInsertComponent,
+  currentPage = 'landing page',
 }: ComponentLibraryPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -617,10 +679,15 @@ export default function ComponentLibraryPanel({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleInsert = (template: ComponentTemplate) => {
+  const handleInsertMe = (template: ComponentTemplate) => {
+    // Generate a randomized chat message for this component
+    const chatMessage = getRandomInsertMessage(template.category, currentPage);
+    
     onInsertComponent({
       name: template.name,
       code: template.code,
+      category: template.category,
+      chatMessage,
     });
     onClose();
   };
@@ -778,11 +845,11 @@ export default function ComponentLibraryPanel({
                           </Button>
                           <Button
                             size="sm"
-                            className="flex-1 h-8 text-xs gap-1.5"
-                            onClick={() => handleInsert(template)}
+                            className="flex-1 h-8 text-xs gap-1.5 bg-gradient-to-r from-primary to-secondary hover:opacity-90"
+                            onClick={() => handleInsertMe(template)}
                           >
-                            <ChevronRight className="h-3 w-3" />
-                            Insert
+                            <Sparkles className="h-3 w-3" />
+                            Insert Me!
                           </Button>
                         </div>
                       </div>
@@ -868,9 +935,9 @@ export default function ComponentLibraryPanel({
                           </>
                         )}
                       </Button>
-                      <Button onClick={() => handleInsert(previewComponent)}>
-                        <ArrowRight className="h-4 w-4 mr-2" />
-                        Insert Component
+                      <Button onClick={() => handleInsertMe(previewComponent)} className="bg-gradient-to-r from-primary to-secondary hover:opacity-90">
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Insert Me!
                       </Button>
                     </div>
                   </motion.div>

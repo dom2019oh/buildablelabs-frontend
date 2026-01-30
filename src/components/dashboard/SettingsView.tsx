@@ -226,7 +226,7 @@ export default function SettingsView() {
           Sign Out
         </h3>
         <p className="text-sm text-muted-foreground mb-4">
-          Sign out of your Buildify account on this device.
+          Sign out of your Buildable account on this device.
         </p>
         <Button variant="outline" onClick={handleSignOut}>
           Sign Out

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
-import buildifyLogo from '@/assets/buildify-logo.png';
+import buildableLogo from '@/assets/buildify-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -64,8 +64,8 @@ export default function SignUp() {
           <div className="glass-card p-8">
             {/* Logo */}
             <div className="flex items-center justify-center gap-3 mb-8">
-              <img src={buildifyLogo} alt="Buildify" className="h-10 w-10" />
-              <span className="text-2xl font-bold">Buildify</span>
+              <img src={buildableLogo} alt="Buildable" className="h-10 w-10" />
+              <span className="text-2xl font-bold">Buildable</span>
             </div>
 
             <h1 className="text-2xl font-bold text-center mb-2">Create your account</h1>

@@ -16,7 +16,7 @@ import {
   Zap,
   Sparkles
 } from 'lucide-react';
-import buildifyLogo from '@/assets/buildify-logo.png';
+import buildableLogo from '@/assets/buildify-logo.png';
 
 interface Message {
   id: string;
@@ -29,7 +29,7 @@ const initialMessages: Message[] = [
   {
     id: '1',
     role: 'assistant',
-    content: "Welcome to your new project! I'm Buildify, your AI-powered product builder. Describe what you want to build, and I'll help you create it. You can ask me to build websites, apps, dashboards, and more.",
+    content: "Welcome to your new project! I'm Buildable, your AI-powered product builder. Describe what you want to build, and I'll help you create it. You can ask me to build websites, apps, dashboards, and more.",
     timestamp: new Date(),
   },
 ];
@@ -75,7 +75,7 @@ export default function ProjectEditor() {
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to="/dashboard" className="flex items-center gap-2">
-              <img src={buildifyLogo} alt="Buildify" className="h-6 w-6" />
+              <img src={buildableLogo} alt="Buildable" className="h-6 w-6" />
             </Link>
             <div>
               <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ export default function ProjectEditor() {
               {message.role === 'assistant' && (
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium text-primary">Buildify</span>
+                  <span className="text-sm font-medium text-primary">Buildable</span>
                 </div>
               )}
               <p className="text-sm">{message.content}</p>
@@ -155,7 +155,7 @@ export default function ProjectEditor() {
                     handleSend();
                   }
                 }}
-                placeholder="Ask Buildify..."
+                placeholder="Ask Buildable..."
                 rows={2}
                 className="flex-1 bg-transparent resize-none focus:outline-none text-sm"
               />
@@ -236,7 +236,7 @@ import React from 'react';
 export default function App() {
   return (
     <div>
-      <h1>Hello, Buildify!</h1>
+      <h1>Hello, Buildable!</h1>
     </div>
   );
 }`}

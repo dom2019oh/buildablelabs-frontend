@@ -72,7 +72,7 @@ export default function Explore() {
               Explore <span className="text-gradient">Community</span> Projects
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Get inspired by what others are building with Buildify.
+              Get inspired by what others are building with Buildable.
             </p>
           </motion.div>
 

@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Settings, BookOpen, HelpCircle, Users, LogOut, User } from "lucide-react";
-import buildifyLogo from "@/assets/buildify-logo.png";
+import buildableLogo from "@/assets/buildify-logo.png";
 import { useAuth } from "@/hooks/useAuth";
 import {
   DropdownMenu,
@@ -44,8 +44,8 @@ export default function Navbar() {
       <nav className="glass-nav w-full max-w-4xl px-6 py-2 flex items-center justify-between logo-shine overflow-hidden">
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2">
-          <img src={buildifyLogo} alt="Buildify" className="h-14 w-14 object-contain" />
-          <span className="text-base font-bold tracking-tight text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Buildify</span>
+          <img src={buildableLogo} alt="Buildable" className="h-14 w-14 object-contain" />
+          <span className="text-base font-bold tracking-tight text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Buildable</span>
         </Link>
 
         {/* Links and account on the right */}

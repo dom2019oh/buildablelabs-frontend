@@ -61,8 +61,8 @@ const businessCreditTiers = [
 
 const faqs = [
   {
-    question: 'What is Buildify?',
-    answer: 'Buildify is an AI-powered development platform that helps you build web applications faster with intelligent code generation, debugging assistance, and architectural guidance.',
+    question: 'What is Buildable?',
+    answer: 'Buildable is an AI-powered development platform that helps you build web applications faster with intelligent code generation, debugging assistance, and architectural guidance.',
   },
   {
     question: 'How do credits work?',
@@ -252,7 +252,7 @@ export default function Pricing() {
         'Credit rollover',
         'Daily bonus credits (5/day)',
         'Custom domains',
-        'Remove Buildify branding',
+        'Remove Buildable branding',
         'On-demand credit top-ups',
       ],
       bestFor: ['Solo devs', 'Roblox creators', 'Students', 'Indie SaaS builders'],
@@ -322,7 +322,7 @@ export default function Pricing() {
             className="text-center mb-8"
           >
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Buildify <span className="text-gradient">Pricing</span>
+              Buildable <span className="text-gradient">Pricing</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Scale your creative output with flexible credit-based plans. Upgrade or downgrade anytime.

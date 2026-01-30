@@ -6,7 +6,7 @@ const docSections = [
   {
     icon: Zap,
     title: 'Getting Started',
-    description: 'Learn the basics of Buildify and create your first project.',
+    description: 'Learn the basics of Buildable and create your first project.',
     articles: ['Quick Start Guide', 'Your First Project', 'Understanding Credits'],
   },
   {
@@ -18,7 +18,7 @@ const docSections = [
   {
     icon: Layers,
     title: 'Features',
-    description: 'Explore all the features Buildify offers.',
+    description: 'Explore all the features Buildable offers.',
     articles: ['AI Generation', 'Code Export', 'Custom Domains', 'Collaboration'],
   },
   {
@@ -54,7 +54,7 @@ export default function Docs() {
               <span className="text-sm text-muted-foreground">Documentation</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Learn <span className="text-gradient">Buildify</span>
+              Learn <span className="text-gradient">Buildable</span>
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
               Everything you need to build amazing products with AI.

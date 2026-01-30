@@ -152,7 +152,7 @@ export default function ProjectChat({
             </div>
             <h3 className="text-lg font-semibold mb-2">Welcome to your project!</h3>
             <p className="text-muted-foreground text-sm max-w-[280px]">
-              I'm Buildify, your AI-powered product builder. Describe what you want to build, and I'll help you create it.
+              I'm Buildable, your AI-powered product builder. Describe what you want to build, and I'll help you create it.
             </p>
           </div>
         ) : (
@@ -175,7 +175,7 @@ export default function ProjectChat({
                     <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
                       <Sparkles className="h-3 w-3 text-primary" />
                     </div>
-                    <span className="text-xs font-medium text-muted-foreground">Buildify</span>
+                    <span className="text-xs font-medium text-muted-foreground">Buildable</span>
                     {message.metadata?.modelUsed && (
                       <ModelBadge model={message.metadata.modelUsed as string} />
                     )}

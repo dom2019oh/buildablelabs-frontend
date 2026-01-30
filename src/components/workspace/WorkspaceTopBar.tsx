@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import RouteCommandBar from './RouteCommandBar';
-import buildifyLogo from '@/assets/buildify-logo.png';
+import buildableLogo from '@/assets/buildify-logo.png';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,7 +86,7 @@ export default function WorkspaceTopBar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1.5 h-8 px-2">
-              <img src={buildifyLogo} alt="Buildify" className="h-5 w-5" />
+              <img src={buildableLogo} alt="Buildable" className="h-5 w-5" />
               <span className="font-medium text-sm max-w-[140px] truncate">{projectName}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
