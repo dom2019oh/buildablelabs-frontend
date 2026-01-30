@@ -167,52 +167,84 @@ function getLanguageFromPath(path: string): string {
 }
 
 // Parse AI response to extract code blocks and file paths
+// Supports format: ```language:path/to/file.ext
 export function parseCodeFromResponse(response: string): Array<{ path: string; content: string }> {
   const files: Array<{ path: string; content: string }> = [];
   
-  // Match code blocks with file paths
-  // Pattern: ```language:path or ```language path or file: path before code block
-  const codeBlockRegex = /(?:(?:file|path)?:\s*`?([^\s`\n]+)`?\s*\n)?```(\w+)?\n([\s\S]*?)```/g;
+  // Primary pattern: ```language:path/to/file.ext
+  // This is the format we instruct the AI to use
+  const primaryRegex = /```(\w+):([^\n]+)\n([\s\S]*?)```/g;
   
   let match;
-  while ((match = codeBlockRegex.exec(response)) !== null) {
-    let path = match[1];
-    const language = match[2] || 'typescript';
+  while ((match = primaryRegex.exec(response)) !== null) {
+    const language = match[1];
+    const path = match[2].trim();
     const content = match[3].trim();
     
-    // Try to extract path from the code block header
-    if (!path) {
-      // Look for patterns like "// src/components/Button.tsx" at the start
-      const pathMatch = content.match(/^\/\/\s*([^\s]+\.[a-z]+)/i);
-      if (pathMatch) {
-        path = pathMatch[1];
+    if (path && content) {
+      files.push({ path, content });
+    }
+  }
+  
+  // If no files found with primary pattern, try fallback patterns
+  if (files.length === 0) {
+    // Fallback: Look for "File: path" or "**path**" before code blocks
+    const fallbackRegex = /(?:(?:File|Path):\s*`?([^\s`\n]+)`?|(?:\*\*([^\*\n]+)\*\*))\s*\n```(\w+)?\n([\s\S]*?)```/gi;
+    
+    while ((match = fallbackRegex.exec(response)) !== null) {
+      const path = (match[1] || match[2] || '').trim();
+      const content = match[4].trim();
+      
+      if (path && content && path.includes('/')) {
+        files.push({ path, content });
       }
     }
+  }
+  
+  // Last resort: Try to infer from component exports
+  if (files.length === 0) {
+    const simpleRegex = /```(tsx?|jsx?)\n([\s\S]*?)```/g;
+    let fileIndex = 0;
     
-    // Try to infer path from content
-    if (!path) {
-      // Look for export default function ComponentName
-      const componentMatch = content.match(/export\s+(?:default\s+)?function\s+(\w+)/);
-      if (componentMatch) {
-        const componentName = componentMatch[1];
-        if (language === 'tsx' || language === 'jsx' || language === 'typescript') {
-          path = `src/components/${componentName}.tsx`;
-        }
-      }
+    while ((match = simpleRegex.exec(response)) !== null) {
+      const content = match[2].trim();
+      
+      // Try to extract component name
+      const componentMatch = content.match(/(?:export\s+default\s+function|function|const)\s+(\w+)/);
+      const componentName = componentMatch?.[1] || `Component${fileIndex}`;
+      
+      // Check if it looks like a main page/landing component
+      const isPage = /(?:Page|Landing|Home|App)/i.test(componentName);
+      const path = isPage 
+        ? `src/components/${componentName}.tsx`
+        : `src/components/${componentName}.tsx`;
+      
+      files.push({ path, content });
+      fileIndex++;
     }
-    
-    // Default path based on language
-    if (!path) {
-      const ext = language === 'css' ? 'css' : 
-                  language === 'html' ? 'html' : 
-                  language === 'json' ? 'json' : 'tsx';
-      path = `src/generated/code.${ext}`;
-    }
-    
-    files.push({ path, content });
   }
   
   return files;
+}
+
+// Strip code blocks from response for clean chat display
+export function stripCodeBlocksFromResponse(response: string): string {
+  // Remove code blocks but keep the introductory text
+  let cleaned = response
+    // Remove ```language:path blocks
+    .replace(/```\w+:[^\n]+\n[\s\S]*?```/g, '')
+    // Remove regular code blocks
+    .replace(/```\w*\n[\s\S]*?```/g, '')
+    // Clean up multiple newlines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  
+  // If almost nothing left, provide a default message
+  if (cleaned.length < 20) {
+    return '';
+  }
+  
+  return cleaned;
 }
 
 // Generate preview HTML from React component code

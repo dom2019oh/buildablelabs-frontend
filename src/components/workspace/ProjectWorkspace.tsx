@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useProject } from '@/hooks/useProjects';
 import { useProjectMessages } from '@/hooks/useProjectMessages';
 import { useStreamingAI } from '@/hooks/useStreamingAI';
-import { useProjectFilesStore, parseCodeFromResponse, generatePreviewHtml } from '@/stores/projectFilesStore';
+import { useProjectFilesStore, parseCodeFromResponse, generatePreviewHtml, stripCodeBlocksFromResponse } from '@/stores/projectFilesStore';
 import { useToast as useToastHook } from '@/hooks/use-toast';
 import WorkspaceTopBar from './WorkspaceTopBar';
 import ProjectChat from './ProjectChat';
@@ -92,43 +92,52 @@ export default function ProjectWorkspace() {
       async (fullContent, metadata) => {
         setStreamingMessage('');
         
-        // Save AI response to messages
-        await sendMessage.mutateAsync({
-          content: fullContent,
-          role: 'assistant',
-          metadata: metadata as any,
-        });
-
-        // Parse code from response and add to files
+        // Parse code from response and add to files FIRST
         const parsedFiles = parseCodeFromResponse(fullContent);
+        const fileNames = parsedFiles.map(f => f.path);
+        
         if (parsedFiles.length > 0) {
+          // Add all files to the store
           parsedFiles.forEach(file => {
             addFile(file.path, file.content);
           });
 
-          // Generate preview HTML from the first component file
+          // Generate preview HTML from the main component file
           const componentFile = parsedFiles.find(f => 
             f.path.endsWith('.tsx') || f.path.endsWith('.jsx')
           );
           
           if (componentFile) {
-            // Extract just the JSX/HTML from the component for preview
-            const jsxMatch = componentFile.content.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*\}$/);
-            if (jsxMatch) {
-              const jsx = jsxMatch[1];
-              // Convert JSX to HTML-like format for preview
-              const html = convertJsxToHtml(jsx);
-              const previewDoc = generatePreviewHtml(html);
-              setPreviewHtml(previewDoc);
-              handleRefreshPreview();
-            }
+            const previewHtml = generateAdvancedPreview(componentFile.content, parsedFiles);
+            setPreviewHtml(previewHtml);
+            handleRefreshPreview();
+          }
+
+          // Switch to code view to show the files
+          setActiveView('code');
+          if (parsedFiles.length > 0) {
+            setSelectedFile(parsedFiles[0].path);
           }
 
           toast({
-            title: 'Files Generated',
-            description: `Created ${parsedFiles.length} file(s)`,
+            title: '✅ Files Created',
+            description: `Created ${parsedFiles.length} file(s): ${fileNames.slice(0, 3).join(', ')}${fileNames.length > 3 ? '...' : ''}`,
           });
         }
+        
+        // Strip code blocks from the message for clean chat display
+        const cleanContent = stripCodeBlocksFromResponse(fullContent);
+        const displayContent = cleanContent || `✅ Created ${parsedFiles.length} file(s):\n${fileNames.map(f => `• ${f}`).join('\n')}`;
+        
+        // Save cleaned AI response to messages (with metadata about files)
+        await sendMessage.mutateAsync({
+          content: displayContent,
+          role: 'assistant',
+          metadata: {
+            ...metadata as any,
+            filesCreated: fileNames,
+          },
+        });
       },
       // On error
       (error) => {
@@ -377,4 +386,79 @@ function convertJsxToHtml(jsx: string): string {
     // Clean up extra whitespace
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Generate advanced preview from component code
+function generateAdvancedPreview(
+  componentCode: string, 
+  allFiles: Array<{ path: string; content: string }>
+): string {
+  // Find CSS files for additional styles
+  const cssFiles = allFiles.filter(f => f.path.endsWith('.css'));
+  const additionalStyles = cssFiles.map(f => f.content).join('\n');
+  
+  // Try to extract JSX from the component
+  let jsx = '';
+  
+  // Match return statement with JSX
+  const returnMatch = componentCode.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*(?:\}|$)/);
+  if (returnMatch) {
+    jsx = returnMatch[1];
+  } else {
+    // Try arrow function with implicit return
+    const arrowMatch = componentCode.match(/=>\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*$/);
+    if (arrowMatch) {
+      jsx = arrowMatch[1];
+    }
+  }
+  
+  if (!jsx) {
+    // Fallback: just show a placeholder
+    jsx = '<div class="flex items-center justify-center h-screen text-white"><p>Preview loading...</p></div>';
+  }
+  
+  // Convert JSX to HTML
+  const html = convertJsxToHtml(jsx);
+  
+  // Build complete HTML document
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(240 3.7% 15.9%)',
+            background: 'hsl(240 10% 3.9%)',
+            foreground: 'hsl(0 0% 98%)',
+            primary: { DEFAULT: 'hsl(0 72.2% 50.6%)', foreground: 'hsl(0 85.7% 97.3%)' },
+            secondary: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
+            muted: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(240 5% 64.9%)' },
+            accent: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #000 0%, #1a0000 50%, #4a0000 100%);
+      color: #e5e5e5;
+      min-height: 100vh;
+    }
+    ${additionalStyles}
+  </style>
+</head>
+<body>
+  <div id="root">${html}</div>
+</body>
+</html>`;
 }
