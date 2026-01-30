@@ -7,15 +7,14 @@ import { useToast } from '@/hooks/use-toast';
 import { useProject } from '@/hooks/useProjects';
 import { useProjectMessages } from '@/hooks/useProjectMessages';
 import { useStreamingAI } from '@/hooks/useStreamingAI';
+import { useProjectFiles } from '@/hooks/useProjectFiles';
 import { useProjectFilesStore, parseCodeFromResponse, generatePreviewHtml, stripCodeBlocksFromResponse } from '@/stores/projectFilesStore';
-import { useToast as useToastHook } from '@/hooks/use-toast';
 import WorkspaceTopBar from './WorkspaceTopBar';
 import ProjectChat from './ProjectChat';
 import LivePreview from './LivePreview';
 import FileExplorer from './FileExplorer';
 import CodeViewer from './CodeViewer';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -40,7 +39,10 @@ export default function ProjectWorkspace() {
     cancelStream,
   } = useStreamingAI();
 
-  // Project files store
+  // Project files - with database persistence
+  const { saveFiles, isLoading: isFilesLoading } = useProjectFiles(projectId);
+
+  // Project files store (in-memory)
   const {
     fileTree,
     selectedFile,
@@ -49,6 +51,7 @@ export default function ProjectWorkspace() {
     addFile,
     setPreviewHtml,
     previewHtml,
+    files,
   } = useProjectFilesStore();
 
   // UI State
@@ -102,6 +105,14 @@ export default function ProjectWorkspace() {
             addFile(file.path, file.content);
           });
 
+          // AUTO-SAVE: Persist files to database
+          try {
+            await saveFiles.mutateAsync(parsedFiles);
+            console.log('Files auto-saved to database:', fileNames);
+          } catch (saveError) {
+            console.error('Failed to auto-save files:', saveError);
+          }
+
           // Generate preview HTML from the main component file
           const componentFile = parsedFiles.find(f => 
             f.path.endsWith('.tsx') || f.path.endsWith('.jsx')
@@ -120,7 +131,7 @@ export default function ProjectWorkspace() {
           }
 
           toast({
-            title: '✅ Files Created',
+            title: '✅ Files Created & Saved',
             description: `Created ${parsedFiles.length} file(s): ${fileNames.slice(0, 3).join(', ')}${fileNames.length > 3 ? '...' : ''}`,
           });
         }
@@ -144,7 +155,7 @@ export default function ProjectWorkspace() {
         setStreamingMessage('');
       }
     );
-  }, [messages, projectId, streamMessage, sendMessage, addFile, setPreviewHtml, handleRefreshPreview, toast]);
+  }, [messages, projectId, streamMessage, sendMessage, addFile, setPreviewHtml, handleRefreshPreview, toast, saveFiles]);
 
   const handlePublish = useCallback(async () => {
     setIsPublishing(true);
