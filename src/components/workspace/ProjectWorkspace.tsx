@@ -8,6 +8,7 @@ import { useProject } from '@/hooks/useProjects';
 import { useProjectMessages } from '@/hooks/useProjectMessages';
 import { useStreamingAI } from '@/hooks/useStreamingAI';
 import { useProjectFilesStore, parseCodeFromResponse, generatePreviewHtml } from '@/stores/projectFilesStore';
+import { useToast as useToastHook } from '@/hooks/use-toast';
 import WorkspaceTopBar from './WorkspaceTopBar';
 import ProjectChat from './ProjectChat';
 import LivePreview from './LivePreview';
@@ -160,6 +161,30 @@ export default function ProjectWorkspace() {
     setActiveView('code');
   }, [setSelectedFile]);
 
+  const handleFileSave = useCallback((newCode: string) => {
+    if (selectedFile) {
+      const { updateFile, setPreviewHtml } = useProjectFilesStore.getState();
+      updateFile(selectedFile, newCode);
+      
+      // Regenerate preview if it's a component file
+      if (selectedFile.endsWith('.tsx') || selectedFile.endsWith('.jsx')) {
+        const jsxMatch = newCode.match(/return\s*\(\s*([\s\S]*?)\s*\);?\s*\}$/);
+        if (jsxMatch) {
+          const jsx = jsxMatch[1];
+          const html = convertJsxToHtml(jsx);
+          const previewDoc = generatePreviewHtml(html);
+          setPreviewHtml(previewDoc);
+          handleRefreshPreview();
+        }
+      }
+      
+      toast({
+        title: 'File Saved',
+        description: `${selectedFile} has been updated`,
+      });
+    }
+  }, [selectedFile, handleRefreshPreview, toast]);
+
   // Get selected file content
   const selectedFileData = selectedFile ? getFile(selectedFile) : null;
 
@@ -296,6 +321,7 @@ export default function ProjectWorkspace() {
                     language={selectedFileData.language}
                     filename={selectedFileData.path}
                     className="h-full"
+                    onSave={handleFileSave}
                   />
                 ) : (
                   <div className="h-full flex items-center justify-center text-muted-foreground">
