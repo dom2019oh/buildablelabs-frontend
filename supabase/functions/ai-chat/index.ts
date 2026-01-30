@@ -22,13 +22,13 @@ interface ChatRequest {
 
 // Classify the task to determine which model to use
 async function classifyTask(message: string, openaiKey: string): Promise<TaskType> {
-  const classificationPrompt = `You are a task classifier. Analyze the user's request and classify it into exactly one category.
+  const classificationPrompt = `You are a task classifier for an AI code builder. Analyze the user's request and classify it into exactly one category.
 
 Categories:
-- "code": Writing new code, modifying existing code, fixing bugs, refactoring, adding features, file changes, logic changes
-- "ui": Layout changes, styling, spacing, colors, fonts, component arrangement, visual improvements, UX improvements, making things look better
-- "reasoning": Planning, explaining, breaking down complex tasks, architecture decisions, answering questions, general help
-- "general": Simple greetings, clarifications, or non-technical requests
+- "code": Writing new code, creating components, modifying existing code, fixing bugs, refactoring, adding features, file changes, logic changes, API integration, database operations, creating pages
+- "ui": Layout changes, styling, spacing, colors, fonts, component arrangement, visual improvements, UX improvements, animations, responsive design, making things look better
+- "reasoning": Planning, explaining concepts, breaking down complex tasks, architecture decisions, answering questions, comparing options, giving advice
+- "general": Simple greetings, clarifications, thank you messages, or non-technical requests
 
 User request: "${message}"
 
@@ -67,13 +67,77 @@ Respond with ONLY the category name (code, ui, reasoning, or general), nothing e
   }
 }
 
-// Call OpenAI for reasoning/coordination
-async function callOpenAI(messages: Message[], apiKey: string): Promise<string> {
-  const systemPrompt = `You are Buildify, an AI assistant that helps users build web applications. 
-You are helpful, friendly, and concise. You help users understand what they want to build, 
-break down complex requests into steps, and guide them through the development process.
-When discussing code or technical topics, be clear and actionable.
-Keep responses focused and practical.`;
+// Call OpenAI for reasoning/coordination and as fallback
+async function callOpenAI(messages: Message[], apiKey: string, taskType: TaskType = "reasoning"): Promise<string> {
+  let systemPrompt: string;
+  
+  switch (taskType) {
+    case "code":
+      systemPrompt = `You are Buildify's CODE GENERATION engine. You generate production-ready code.
+
+Your capabilities:
+- Generate complete, working React components with TypeScript
+- Write clean, maintainable, well-structured code
+- Use Tailwind CSS for all styling (no inline styles)
+- Follow modern React patterns (hooks, functional components)
+- Handle edge cases and error states
+- Create responsive, accessible UI
+
+Code Generation Rules:
+1. ALWAYS provide complete, runnable code - never partial snippets
+2. Use TypeScript with proper type definitions
+3. Use Tailwind CSS classes for all styling
+4. Include all necessary imports
+5. Add helpful comments for complex logic
+6. Use shadcn/ui components when appropriate (Button, Card, Input, etc.)
+7. Follow the component structure: imports → types → component → export
+
+Response Format:
+- Start with a brief explanation of what you're building (1-2 sentences)
+- Provide the complete code in a code block with proper language tag
+- End with a brief note on how to use/integrate the component`;
+      break;
+    case "ui":
+      systemPrompt = `You are Buildify's UI/UX SPECIALIST, focused on visual design and user experience.
+
+Your expertise:
+- Layout composition and visual hierarchy
+- Spacing, padding, and margins (using Tailwind spacing scale)
+- Color schemes and contrast (using Tailwind colors or CSS variables)
+- Typography and font pairing
+- Component organization and structure
+- Responsive design patterns
+- Micro-interactions and animations
+- Accessibility best practices
+
+Response Guidelines:
+1. Provide specific, actionable recommendations
+2. Use exact Tailwind CSS classes (e.g., "p-4", "gap-6", "text-lg")
+3. When suggesting colors, use semantic tokens (bg-primary, text-muted-foreground) or Tailwind colors
+4. Include code examples showing the improved styling
+5. Explain WHY each change improves the UI
+
+Always provide complete, usable code that can be directly implemented.`;
+      break;
+    default:
+      systemPrompt = `You are Buildify, an advanced AI product builder. You help users build production-ready web applications.
+
+Your role as the REASONING MODEL:
+- Understand what the user wants to build
+- Break down complex requests into clear, actionable steps
+- Explain architecture decisions and best practices
+- Guide users through the development process
+- Provide clear, concise explanations
+
+Response Guidelines:
+- Be conversational but professional
+- Use bullet points for lists and steps
+- Keep responses focused and actionable
+- When discussing features, be specific about implementation
+- Suggest improvements when appropriate
+
+You work with a React + TypeScript + Tailwind CSS + Supabase stack.`;
+  }
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -87,7 +151,7 @@ Keep responses focused and practical.`;
         { role: "system", content: systemPrompt },
         ...messages,
       ],
-      max_tokens: 2000,
+      max_tokens: 4000,
       temperature: 0.7,
     }),
   });
@@ -103,16 +167,38 @@ Keep responses focused and practical.`;
 
 // Call Claude for code-related tasks
 async function callClaude(messages: Message[], apiKey: string): Promise<string> {
-  const systemPrompt = `You are Buildify's code specialist. You excel at:
-- Writing clean, maintainable code
-- Modifying existing codebases safely
-- Fixing bugs and refactoring
-- Working across multiple files
-- Explaining code changes clearly
+  const systemPrompt = `You are Buildify's CODE GENERATION engine, similar to Lovable. You generate production-ready code.
 
-You write React, TypeScript, and Tailwind CSS. Keep code examples focused and practical.
-When suggesting changes, explain what you're doing and why.
-Use markdown code blocks with appropriate language tags.`;
+Your capabilities:
+- Generate complete, working React components with TypeScript
+- Write clean, maintainable, well-structured code
+- Use Tailwind CSS for all styling (no inline styles)
+- Follow modern React patterns (hooks, functional components)
+- Handle edge cases and error states
+- Create responsive, accessible UI
+
+Code Generation Rules:
+1. ALWAYS provide complete, runnable code - never partial snippets
+2. Use TypeScript with proper type definitions
+3. Use Tailwind CSS classes for all styling
+4. Include all necessary imports
+5. Add helpful comments for complex logic
+6. Use shadcn/ui components when appropriate (Button, Card, Input, etc.)
+7. Follow the component structure: imports → types → component → export
+
+Response Format:
+- Start with a brief explanation of what you're building (1-2 sentences)
+- Provide the complete code in a code block with proper language tag
+- End with a brief note on how to use/integrate the component
+
+Example output format:
+I'll create a [component name] that [brief description].
+
+\`\`\`tsx
+// Complete working code here
+\`\`\`
+
+This component [brief usage note].`;
 
   const anthropicMessages = messages.map(m => ({
     role: m.role === "assistant" ? "assistant" : "user",
@@ -128,7 +214,7 @@ Use markdown code blocks with appropriate language tags.`;
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: anthropicMessages,
     }),
@@ -145,20 +231,36 @@ Use markdown code blocks with appropriate language tags.`;
 
 // Call Gemini for UI/UX tasks
 async function callGemini(messages: Message[], apiKey: string): Promise<string> {
-  const systemPrompt = `You are Buildify's UI/UX specialist. You excel at:
-- Layout and visual structure
-- Component organization and spacing
-- Color schemes and typography
-- User experience improvements
-- Making interfaces clean and intuitive
-- Copy writing and microcopy
+  const systemPrompt = `You are Buildify's UI/UX SPECIALIST, focused on visual design and user experience.
 
-You work with React components and Tailwind CSS. Focus on practical, implementable suggestions.
-When recommending UI changes, be specific about spacing, colors (using Tailwind classes), and structure.`;
+Your expertise:
+- Layout composition and visual hierarchy
+- Spacing, padding, and margins (using Tailwind spacing scale)
+- Color schemes and contrast (using Tailwind colors or CSS variables)
+- Typography and font pairing
+- Component organization and structure
+- Responsive design patterns
+- Micro-interactions and animations
+- Accessibility best practices
+
+Response Guidelines:
+1. Provide specific, actionable recommendations
+2. Use exact Tailwind CSS classes (e.g., "p-4", "gap-6", "text-lg")
+3. When suggesting colors, use semantic tokens (bg-primary, text-muted-foreground) or Tailwind colors
+4. Include code examples showing the improved styling
+5. Explain WHY each change improves the UI
+
+Response Format:
+- Start with an assessment of the current UI (1-2 sentences)
+- List specific improvements with Tailwind classes
+- Provide a code example showing the changes
+- Summarize the visual impact
+
+Always provide complete, usable code that can be directly implemented.`;
 
   const contents = [
     { role: "user", parts: [{ text: systemPrompt }] },
-    { role: "model", parts: [{ text: "I understand. I'm Buildify's UI/UX specialist ready to help with layouts, styling, and user experience improvements." }] },
+    { role: "model", parts: [{ text: "I understand. I'm Buildify's UI/UX specialist. I'll provide specific, actionable improvements with exact Tailwind classes and complete code examples." }] },
     ...messages.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
@@ -174,7 +276,7 @@ When recommending UI changes, be specific about spacing, colors (using Tailwind 
         contents,
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 3000,
         },
       }),
     }
@@ -201,8 +303,8 @@ serve(async (req) => {
     const claudeKey = Deno.env.get("CLAUDE_API_KEY");
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
 
-    if (!openaiKey || !claudeKey || !geminiKey) {
-      throw new Error("Missing required API keys");
+    if (!openaiKey) {
+      throw new Error("Missing OpenAI API key");
     }
 
     // Verify auth
@@ -281,20 +383,44 @@ serve(async (req) => {
       { role: "user", content: sanitizedMessage },
     ];
 
-    // Route to appropriate model
+    // Route to appropriate model with fallback to OpenAI
     let response: string;
     let modelUsed: string;
 
     switch (taskType) {
       case "code":
-        console.log("Routing to Claude for code task");
-        response = await callClaude(messages, claudeKey);
-        modelUsed = "claude";
+        // Try Claude first, fallback to OpenAI
+        if (claudeKey) {
+          try {
+            console.log("Routing to Claude for code task");
+            response = await callClaude(messages, claudeKey);
+            modelUsed = "claude";
+          } catch (error) {
+            console.warn("Claude failed, falling back to OpenAI:", error);
+            response = await callOpenAI(messages, openaiKey, "code");
+            modelUsed = "openai";
+          }
+        } else {
+          response = await callOpenAI(messages, openaiKey, "code");
+          modelUsed = "openai";
+        }
         break;
       case "ui":
-        console.log("Routing to Gemini for UI task");
-        response = await callGemini(messages, geminiKey);
-        modelUsed = "gemini";
+        // Try Gemini first, fallback to OpenAI
+        if (geminiKey) {
+          try {
+            console.log("Routing to Gemini for UI task");
+            response = await callGemini(messages, geminiKey);
+            modelUsed = "gemini";
+          } catch (error) {
+            console.warn("Gemini failed, falling back to OpenAI:", error);
+            response = await callOpenAI(messages, openaiKey, "ui");
+            modelUsed = "openai";
+          }
+        } else {
+          response = await callOpenAI(messages, openaiKey, "ui");
+          modelUsed = "openai";
+        }
         break;
       case "reasoning":
       case "general":

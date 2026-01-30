@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { ProjectMessage } from '@/hooks/useProjectMessages';
+import MarkdownRenderer from './MarkdownRenderer';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -172,7 +173,11 @@ export default function ProjectChat({
                     )}
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                {message.role === 'assistant' ? (
+                  <MarkdownRenderer content={message.content} className="text-sm" />
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                )}
                 
                 {message.role === 'assistant' && (
                   <div className="flex items-center gap-0.5 mt-3">
