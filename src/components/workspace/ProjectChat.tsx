@@ -224,15 +224,29 @@ export default function ProjectChat({
                           <div className="flex justify-between items-center">
                             <span>Worked for</span>
                             <span className="font-medium text-foreground">
-                              {message.metadata?.duration ? `${Math.floor(Number(message.metadata.duration) / 60)}m ${Number(message.metadata.duration) % 60}s` : '~15s'}
+                              {message.metadata?.duration 
+                                ? Number(message.metadata.duration) >= 60 
+                                  ? `${Math.floor(Number(message.metadata.duration) / 60)}m ${Number(message.metadata.duration) % 60}s` 
+                                  : `${Number(message.metadata.duration)}s`
+                                : '~15s'}
                             </span>
                           </div>
                           <div className="flex justify-between items-center mt-1">
                             <span>Credits used</span>
                             <span className="font-medium text-foreground">
-                              {String(message.metadata?.creditsUsed || 1)}
+                              {message.metadata?.creditsUsed 
+                                ? Number(message.metadata.creditsUsed).toFixed(2)
+                                : '0.10'}
                             </span>
                           </div>
+                          {message.metadata?.remainingCredits !== undefined && (
+                            <div className="flex justify-between items-center mt-1">
+                              <span>Balance</span>
+                              <span className="font-medium text-foreground">
+                                {Number(message.metadata.remainingCredits).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </DropdownMenuContent>
                     </DropdownMenu>

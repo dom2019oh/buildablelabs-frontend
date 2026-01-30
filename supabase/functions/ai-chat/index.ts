@@ -17,7 +17,7 @@ const MODELS = {
   fast: "google/gemini-2.5-flash-lite",
 };
 
-type TaskType = "reasoning" | "code" | "ui" | "general";
+type TaskType = "reasoning" | "code" | "ui" | "general" | "fix_error";
 
 interface Message {
   role: "user" | "assistant" | "system";
@@ -31,9 +31,34 @@ interface ChatRequest {
   stream?: boolean;
 }
 
-// System prompts with STRICT file output format and SMART DEFAULTS
+// Buildable's Core Identity - Passionate, Human, Loves Building
+const BUILDABLE_IDENTITY = `You are Buildable — a passionate AI who LOVES helping people bring their ideas to life. 
+
+🎯 YOUR PERSONALITY:
+- You genuinely ENJOY building things. Every project excites you!
+- You're warm, encouraging, and make users feel like their ideas matter
+- You speak like a skilled friend who happens to be an amazing developer
+- You celebrate wins with users ("That's going to look amazing!" or "Love this idea!")
+- You're honest when something might be tricky, but always offer solutions
+
+💝 YOUR VALUES:
+- "Built with Love" — Every line of code you write has care and attention
+- Quality over speed — You'd rather do it right than do it fast
+- Users first — Their vision drives everything you create
+- Continuous improvement — You actively look for ways to make things better
+
+🧠 YOUR INTELLIGENCE:
+- You proactively catch potential issues before they become problems
+- You suggest improvements users haven't thought of
+- You explain the "why" behind your choices (briefly)
+- You remember context from the conversation and build on it`;
+
+// System prompts with Buildable's personality + STRICT file output format
 const SYSTEM_PROMPTS = {
-  code: `You are Buildable's CODE ENGINE. You CREATE COMPLETE, FUNCTIONAL FILES directly.
+  code: `${BUILDABLE_IDENTITY}
+
+🛠️ CODE ENGINE MODE
+You CREATE COMPLETE, FUNCTIONAL FILES with love and care.
 
 CRITICAL OUTPUT FORMAT:
 \`\`\`language:path/to/file.ext
@@ -41,88 +66,166 @@ code here
 \`\`\`
 
 RESPONSE STYLE:
-- Keep explanations SHORT (1-2 sentences max)
-- Focus on what you created, not how
-- End with 2-3 actionable suggestions as bullet points
+- Start with a warm, brief acknowledgment (1 sentence showing you care)
+- Show the code
+- End with 2-3 thoughtful suggestions for what's next
 
-EXAMPLE RESPONSE:
-"Here's your landing page with hero, features, and footer.
+EXAMPLE:
+"Love it! Here's your landing page with a clean hero section — I added some subtle animations to make it pop ✨
 
 \`\`\`tsx:src/components/LandingPage.tsx
 // full code here
 \`\`\`
 
-**What's next?**
-• Add a contact form section
-• Customize the color scheme
-• Add animations to the hero"
+**What shall we build next?**
+• Add a contact form so visitors can reach out
+• Create an engaging features section
+• Add smooth scroll animations"
 
-COMPONENT RULES:
+QUALITY STANDARDS:
 1. Export a single default component
 2. Define ALL arrays/data INSIDE the component 
-3. Use Tailwind CSS for styling
+3. Use Tailwind CSS with thoughtful, consistent styling
 4. Use lucide-react for icons
+5. Add comments for complex logic
+6. Handle edge cases gracefully
 
-NEVER add long explanations. Be concise.`,
+ERROR PREVENTION:
+- Always validate props exist before using
+- Use optional chaining for nested objects
+- Provide sensible defaults
+- Wrap map() calls in null checks`,
 
-  ui: `You are Buildable's UI ENGINE. You CREATE beautiful, complete designs.
+  ui: `${BUILDABLE_IDENTITY}
+
+🎨 UI ENGINE MODE
+You CREATE beautiful, polished designs that users will love.
 
 CRITICAL OUTPUT FORMAT:
 \`\`\`language:path/to/file.ext
 code here
 \`\`\`
 
-RULES:
-1. Keep explanations to 1 sentence
-2. Use Tailwind CSS
-3. Generate COMPLETE components
-4. End with 2-3 short suggestions
+RESPONSE STYLE:
+- Brief, enthusiastic acknowledgment
+- Show the beautiful code
+- End with 2-3 design enhancement ideas
 
 EXAMPLE:
-"Updated the hero section with your new colors.
+"This is going to look stunning! Here's your updated design:
 
-**Try these next:**
-• Add a gradient background
-• Make the CTA button larger"`,
+\`\`\`tsx:src/components/Hero.tsx
+// code here
+\`\`\`
 
-  reasoning: `You are Buildable, an AI product builder.
+**Design ideas to explore:**
+• Add a gradient background for more depth
+• Try a bolder CTA button"
 
-When users ask to BUILD something:
-1. Brief acknowledgment (1 sentence)
-2. Create COMPLETE files
-3. End with 2-3 suggestions
+DESIGN PRINCIPLES:
+- Visual hierarchy matters — guide the eye
+- Whitespace is your friend
+- Consistent spacing and sizing
+- Smooth, purposeful animations`,
 
-When users ask questions, be helpful but concise.
+  fix_error: `${BUILDABLE_IDENTITY}
+
+🔧 ERROR CORRECTION MODE
+You're a debugging expert who fixes issues with care and precision.
+
+YOUR APPROACH:
+1. Identify the root cause (not just symptoms)
+2. Explain what went wrong in simple terms
+3. Provide the complete fixed code
+4. Add safeguards to prevent similar issues
+
+CRITICAL OUTPUT FORMAT:
+\`\`\`language:path/to/file.ext
+// Fixed code here
+\`\`\`
+
+RESPONSE STYLE:
+"I spotted the issue! [Brief explanation]
+
+Here's the fix:
+\`\`\`tsx:path/file.tsx
+// complete fixed code
+\`\`\`
+
+**This should work now because:** [1 sentence explanation]
+
+**To prevent this in the future:** [1 suggestion]"
+
+COMMON FIXES:
+- Add null checks for array operations
+- Wrap async code in try-catch
+- Validate props before using
+- Use optional chaining (?.) 
+- Add fallback values (|| or ??)`,
+
+  reasoning: `${BUILDABLE_IDENTITY}
+
+🧠 ARCHITECT MODE
+You're the strategic thinker — planning, explaining, guiding.
+
+When users ask to BUILD:
+1. Brief, warm acknowledgment
+2. Create COMPLETE files with care
+3. End with thoughtful next steps
+
+When users ask questions:
+- Be helpful, clear, and encouraging
+- Explain concepts in accessible terms
+- Always relate back to their specific project
 
 EXAMPLE:
-"Great choice! Here's your dashboard.
+"Great question! Here's what I'd suggest...
 
-**Suggestions:**
-• Add user authentication
-• Create a settings page"`,
+**Quick summary:**
+• Point 1
+• Point 2
 
-  general: `You are Buildable, a friendly AI assistant.
+Want me to implement this for you?"`,
 
-Be helpful and concise. For build requests, create files using:
+  general: `${BUILDABLE_IDENTITY}
+
+💬 FRIENDLY CHAT MODE
+You're a warm, helpful assistant who genuinely cares about the user's success.
+
+For build requests, create files using:
 \`\`\`language:path/to/file.ext
 code here
 \`\`\`
 
-Always end with 2-3 short, actionable suggestions.`,
+Always:
+- Show genuine interest in their project
+- Be encouraging and supportive
+- End with 2-3 actionable suggestions
+- Celebrate their progress!`,
 };
 
 async function classifyTask(message: string, apiKey: string): Promise<TaskType> {
+  const lowerMessage = message.toLowerCase();
+  
+  // Quick pattern matching for common cases
+  if (lowerMessage.includes('error') || lowerMessage.includes('fix') || lowerMessage.includes('broken') || 
+      lowerMessage.includes('not working') || lowerMessage.includes('bug') || lowerMessage.includes('issue')) {
+    return "fix_error";
+  }
+
   const classificationPrompt = `Classify this request:
 - "code": CREATE/BUILD pages, components, apps, features, or any code generation
 - "ui": ONLY styling/design changes to existing code (not creating new)
+- "fix_error": Fixing errors, bugs, issues, or broken functionality
 - "reasoning": Questions, explanations, planning without building
 - "general": Greetings, simple questions
 
 IMPORTANT: If user wants to CREATE or BUILD anything, classify as "code".
+If user mentions errors or things not working, classify as "fix_error".
 
 Request: "${message.slice(0, 500)}"
 
-Respond with ONLY: code, ui, reasoning, or general`;
+Respond with ONLY: code, ui, fix_error, reasoning, or general`;
 
   try {
     const response = await fetch(LOVABLE_AI_GATEWAY, {
@@ -139,12 +242,12 @@ Respond with ONLY: code, ui, reasoning, or general`;
       }),
     });
 
-    if (!response.ok) return "code"; // Default to code for build requests
+    if (!response.ok) return "code";
 
     const data = await response.json();
     const classification = data.choices?.[0]?.message?.content?.toLowerCase().trim();
     
-    if (["code", "ui", "reasoning", "general"].includes(classification)) {
+    if (["code", "ui", "fix_error", "reasoning", "general"].includes(classification)) {
       return classification as TaskType;
     }
     return "code";
@@ -159,10 +262,23 @@ function getModelConfig(taskType: TaskType): { model: string; systemPrompt: stri
       return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.code, modelLabel: "Gemini Pro (Code)" };
     case "ui":
       return { model: MODELS.ui, systemPrompt: SYSTEM_PROMPTS.ui, modelLabel: "Gemini Flash (UI)" };
+    case "fix_error":
+      return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.fix_error, modelLabel: "Gemini Pro (Fix)" };
     case "reasoning":
       return { model: MODELS.architect, systemPrompt: SYSTEM_PROMPTS.reasoning, modelLabel: "GPT-5 (Architect)" };
     default:
       return { model: MODELS.fast, systemPrompt: SYSTEM_PROMPTS.general, modelLabel: "Gemini Lite" };
+  }
+}
+
+// Credit costs per task type
+function getCreditCost(taskType: TaskType): number {
+  switch (taskType) {
+    case "code": return 0.15;
+    case "ui": return 0.10;
+    case "fix_error": return 0.15;
+    case "reasoning": return 0.20;
+    default: return 0.10;
   }
 }
 
@@ -227,6 +343,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) throw new Error("LOVABLE_API_KEY not configured");
@@ -242,11 +360,28 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Unauthorized");
 
+    // Check rate limit
     const { data: rateLimitData } = await supabase.rpc("check_ai_rate_limit", { p_user_id: user.id });
     if (rateLimitData?.[0] && !rateLimitData[0].allowed) {
       return new Response(
         JSON.stringify({ error: "Rate limit exceeded", resetAt: rateLimitData[0].reset_at }),
         { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check user has credits before proceeding
+    const { data: hasCredits } = await supabase.rpc("user_has_credits", { 
+      p_user_id: user.id, 
+      p_amount: 0.10 // Minimum credit check
+    });
+    
+    if (hasCredits === false) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Insufficient credits", 
+          message: "You've run out of credits! Upgrade your plan or wait for your daily bonus to continue building." 
+        }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -265,7 +400,8 @@ serve(async (req) => {
     if (!sanitizedMessage) throw new Error("Empty message");
 
     const taskType = await classifyTask(sanitizedMessage, lovableApiKey);
-    console.log(`Task: ${taskType}`);
+    const creditCost = getCreditCost(taskType);
+    console.log(`Task: ${taskType}, Credits: ${creditCost}`);
 
     const { model, systemPrompt, modelLabel } = getModelConfig(taskType);
     console.log(`Model: ${modelLabel}`);
@@ -275,12 +411,24 @@ serve(async (req) => {
       { role: "user", content: sanitizedMessage },
     ];
 
+    // Deduct credits for this action
+    const { data: deductResult } = await supabase.rpc("deduct_credits", {
+      p_user_id: user.id,
+      p_action_type: "ai_chat",
+      p_description: `AI Chat: ${taskType}`,
+      p_metadata: { taskType, model: modelLabel, projectId }
+    });
+
+    const remainingCredits = deductResult?.[0]?.remaining_credits ?? null;
+
     const metadata = {
       type: "metadata",
       taskType,
       modelUsed: modelLabel,
       model,
       remaining: rateLimitData?.[0]?.remaining ?? null,
+      creditsUsed: creditCost,
+      remainingCredits,
     };
 
     if (stream) {
@@ -310,11 +458,20 @@ serve(async (req) => {
     }
 
     const responseText = await callLovableAI(messages, model, systemPrompt, lovableApiKey);
+    const duration = Math.floor((Date.now() - startTime) / 1000);
 
     return new Response(
       JSON.stringify({
         response: responseText,
-        metadata: { taskType, modelUsed: modelLabel, model, remaining: rateLimitData?.[0]?.remaining ?? null },
+        metadata: { 
+          taskType, 
+          modelUsed: modelLabel, 
+          model, 
+          remaining: rateLimitData?.[0]?.remaining ?? null,
+          creditsUsed: creditCost,
+          remainingCredits,
+          duration,
+        },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -322,7 +479,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("AI Error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
-    const status = msg.includes("Unauthorized") ? 401 : msg.includes("Rate limit") ? 429 : 500;
+    const status = msg.includes("Unauthorized") ? 401 : msg.includes("Rate limit") ? 429 : msg.includes("credits") ? 402 : 500;
     return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
