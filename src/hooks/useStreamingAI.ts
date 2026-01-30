@@ -7,6 +7,14 @@ interface AIMetadata {
   taskType: string;
   modelUsed: string;
   remaining: number | null;
+  creditsUsed?: number;
+  remainingCredits?: number;
+  smartMode?: boolean;
+}
+
+interface ProjectFile {
+  path: string;
+  content: string;
 }
 
 interface StreamingState {
@@ -32,6 +40,7 @@ export function useStreamingAI() {
     onChunk?: (chunk: string, fullContent: string) => void,
     onComplete?: (fullContent: string, metadata: AIMetadata | null) => void,
     onError?: (error: Error) => void,
+    existingFiles?: ProjectFile[], // NEW: Pass existing files for smart coding
   ) => {
     if (!session?.access_token) {
       const error = new Error('Not authenticated');
@@ -63,6 +72,7 @@ export function useStreamingAI() {
             message,
             conversationHistory,
             stream: true,
+            existingFiles: existingFiles || [], // Send existing files for context
           }),
           signal,
         }
@@ -111,6 +121,9 @@ export function useStreamingAI() {
                 taskType: parsed.taskType,
                 modelUsed: parsed.modelUsed,
                 remaining: parsed.remaining,
+                creditsUsed: parsed.creditsUsed,
+                remainingCredits: parsed.remainingCredits,
+                smartMode: parsed.smartMode,
               };
               setState(prev => ({ ...prev, metadata }));
               continue;

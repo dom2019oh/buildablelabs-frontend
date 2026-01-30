@@ -17,10 +17,15 @@ const MODELS = {
   fast: "google/gemini-2.5-flash-lite",
 };
 
-type TaskType = "reasoning" | "code" | "ui" | "general" | "fix_error";
+type TaskType = "reasoning" | "code" | "ui" | "general" | "fix_error" | "add_component";
 
 interface Message {
   role: "user" | "assistant" | "system";
+  content: string;
+}
+
+interface ProjectFile {
+  path: string;
   content: string;
 }
 
@@ -29,9 +34,10 @@ interface ChatRequest {
   message: string;
   conversationHistory: Message[];
   stream?: boolean;
+  existingFiles?: ProjectFile[];
 }
 
-// Buildable's Core Identity - Passionate, Human, Loves Building
+// Buildable's Core Identity - Passionate, Human, Loves Building with SMART context awareness
 const BUILDABLE_IDENTITY = `You are Buildable — a passionate AI who LOVES helping people bring their ideas to life. 
 
 🎯 YOUR PERSONALITY:
@@ -53,9 +59,59 @@ const BUILDABLE_IDENTITY = `You are Buildable — a passionate AI who LOVES help
 - You explain the "why" behind your choices (briefly)
 - You remember context from the conversation and build on it`;
 
-// System prompts with Buildable's personality + STRICT file output format
+// SMART CODING RULES - The key to non-destructive changes
+const SMART_CODING_RULES = `
+🔒 CRITICAL: SMART CONTEXT-AWARE CODING
+
+YOU MUST FOLLOW THESE RULES TO AVOID BREAKING EXISTING CODE:
+
+1. **ANALYZE BEFORE CODING**
+   - ALWAYS read and understand existing files before modifying
+   - Identify imports, exports, styling patterns, and component structure
+   - Note existing Tailwind classes, color schemes, and spacing patterns
+
+2. **INCREMENTAL CHANGES ONLY**
+   - When adding a component (like navbar), ADD it - don't replace the whole file
+   - Preserve ALL existing code, imports, and styling
+   - Insert new components at logical positions (navbar at top, footer at bottom)
+
+3. **PRESERVE EXISTING STRUCTURE**
+   - Keep existing component hierarchy intact
+   - Maintain existing import statements
+   - Preserve existing CSS classes and styling
+   - Don't change working code unless specifically asked
+
+4. **SMART COMPONENT INTEGRATION**
+   When asked to "add a navbar" to an existing page:
+   - Import the new component at the top
+   - Insert <Navbar /> at the appropriate position
+   - Keep ALL other JSX exactly as it was
+   - Don't refactor or "improve" unrelated code
+
+5. **FILE MODIFICATION PATTERN**
+   For EXISTING files, show the COMPLETE file with:
+   - All original imports + any new ones
+   - All original code preserved
+   - New code inserted at correct position
+   - Mark new additions with comments like: {/* NEW: Navbar */}
+
+6. **NEW FILES ONLY WHEN NEEDED**
+   - Create new component files for new components
+   - Update existing files minimally to import/use new components
+   - Never recreate an entire page when adding one element
+
+EXAMPLE - Adding navbar to existing landing page:
+❌ WRONG: Rewriting the entire LandingPage.tsx
+✅ RIGHT: 
+   1. Create src/components/Navbar.tsx (new component)
+   2. Update LandingPage.tsx to import and add <Navbar /> at top
+   3. Keep ALL other code in LandingPage.tsx unchanged`;
+
+// System prompts with Buildable's personality + STRICT file output format + SMART CODING
 const SYSTEM_PROMPTS = {
   code: `${BUILDABLE_IDENTITY}
+
+${SMART_CODING_RULES}
 
 🛠️ CODE ENGINE MODE
 You CREATE COMPLETE, FUNCTIONAL FILES with love and care.
@@ -70,17 +126,21 @@ RESPONSE STYLE:
 - Show the code
 - End with 2-3 thoughtful suggestions for what's next
 
-EXAMPLE:
-"Love it! Here's your landing page with a clean hero section — I added some subtle animations to make it pop ✨
+EXAMPLE (Adding to existing project):
+"Love it! I'll add a sleek navbar without touching your existing layout ✨
 
-\`\`\`tsx:src/components/LandingPage.tsx
-// full code here
+\`\`\`tsx:src/components/Navbar.tsx
+// New navbar component
 \`\`\`
 
-**What shall we build next?**
-• Add a contact form so visitors can reach out
-• Create an engaging features section
-• Add smooth scroll animations"
+\`\`\`tsx:src/components/LandingPage.tsx
+// Full file with navbar imported and added at top
+// ALL existing code preserved exactly
+\`\`\`
+
+**What's next?**
+• Add smooth scroll behavior to nav links
+• Create a mobile hamburger menu"
 
 QUALITY STANDARDS:
 1. Export a single default component
@@ -96,7 +156,60 @@ ERROR PREVENTION:
 - Provide sensible defaults
 - Wrap map() calls in null checks`,
 
+  add_component: `${BUILDABLE_IDENTITY}
+
+${SMART_CODING_RULES}
+
+🧩 COMPONENT INTEGRATION MODE
+You're an expert at adding new components to existing projects WITHOUT breaking anything.
+
+YOUR WORKFLOW:
+1. **Analyze**: Read the existing file structure carefully
+2. **Plan**: Identify exactly where the new component should go
+3. **Create**: Build the new component as a separate file
+4. **Integrate**: Minimally update existing files to include it
+
+CRITICAL OUTPUT FORMAT:
+\`\`\`language:path/to/file.ext
+code here
+\`\`\`
+
+RESPONSE STYLE:
+"I'll add this carefully to preserve your existing work! ✨
+
+**Step 1: New component**
+\`\`\`tsx:src/components/NewComponent.tsx
+// Complete new component
+\`\`\`
+
+**Step 2: Integration (minimal changes)**
+\`\`\`tsx:src/components/ExistingPage.tsx
+// COMPLETE file with:
+// - Original imports + new import
+// - Original code + new component inserted
+// - Mark new code with: {/* NEW: Component */}
+\`\`\`
+
+**Changes made:**
+• Created new Navbar component
+• Added import to LandingPage
+• Inserted Navbar at top of page
+• All other code unchanged ✓
+
+**Next steps:**
+• Add hover effects
+• Make it sticky on scroll"
+
+INTEGRATION CHECKLIST:
+✓ New component in separate file
+✓ Existing files show COMPLETE content
+✓ Original code preserved exactly
+✓ New additions clearly marked
+✓ Import statements updated correctly`,
+
   ui: `${BUILDABLE_IDENTITY}
+
+${SMART_CODING_RULES}
 
 🎨 UI ENGINE MODE
 You CREATE beautiful, polished designs that users will love.
@@ -111,24 +224,16 @@ RESPONSE STYLE:
 - Show the beautiful code
 - End with 2-3 design enhancement ideas
 
-EXAMPLE:
-"This is going to look stunning! Here's your updated design:
-
-\`\`\`tsx:src/components/Hero.tsx
-// code here
-\`\`\`
-
-**Design ideas to explore:**
-• Add a gradient background for more depth
-• Try a bolder CTA button"
-
 DESIGN PRINCIPLES:
 - Visual hierarchy matters — guide the eye
 - Whitespace is your friend
 - Consistent spacing and sizing
-- Smooth, purposeful animations`,
+- Smooth, purposeful animations
+- PRESERVE existing styling when adding new elements`,
 
   fix_error: `${BUILDABLE_IDENTITY}
+
+${SMART_CODING_RULES}
 
 🔧 ERROR CORRECTION MODE
 You're a debugging expert who fixes issues with care and precision.
@@ -136,12 +241,12 @@ You're a debugging expert who fixes issues with care and precision.
 YOUR APPROACH:
 1. Identify the root cause (not just symptoms)
 2. Explain what went wrong in simple terms
-3. Provide the complete fixed code
+3. Provide the COMPLETE fixed file (not just snippets)
 4. Add safeguards to prevent similar issues
 
 CRITICAL OUTPUT FORMAT:
 \`\`\`language:path/to/file.ext
-// Fixed code here
+// Fixed code here - COMPLETE FILE
 \`\`\`
 
 RESPONSE STYLE:
@@ -149,12 +254,14 @@ RESPONSE STYLE:
 
 Here's the fix:
 \`\`\`tsx:path/file.tsx
-// complete fixed code
+// complete fixed file
 \`\`\`
 
-**This should work now because:** [1 sentence explanation]
+**What I fixed:**
+• [Specific change 1]
+• [Specific change 2]
 
-**To prevent this in the future:** [1 suggestion]"
+**This should work now because:** [1 sentence explanation]"
 
 COMMON FIXES:
 - Add null checks for array operations
@@ -204,8 +311,21 @@ Always:
 - Celebrate their progress!`,
 };
 
-async function classifyTask(message: string, apiKey: string): Promise<TaskType> {
+async function classifyTask(message: string, existingFiles: ProjectFile[], apiKey: string): Promise<TaskType> {
   const lowerMessage = message.toLowerCase();
+  
+  // Detect if this is adding a component to existing project
+  const isAddingComponent = (
+    (lowerMessage.includes('add') || lowerMessage.includes('create') || lowerMessage.includes('build')) &&
+    (lowerMessage.includes('navbar') || lowerMessage.includes('footer') || lowerMessage.includes('header') || 
+     lowerMessage.includes('sidebar') || lowerMessage.includes('menu') || lowerMessage.includes('section') ||
+     lowerMessage.includes('component') || lowerMessage.includes('button') || lowerMessage.includes('form'))
+  );
+  
+  // If adding component AND we have existing files, use add_component mode
+  if (isAddingComponent && existingFiles.length > 0) {
+    return "add_component";
+  }
   
   // Quick pattern matching for common cases
   if (lowerMessage.includes('error') || lowerMessage.includes('fix') || lowerMessage.includes('broken') || 
@@ -214,18 +334,21 @@ async function classifyTask(message: string, apiKey: string): Promise<TaskType> 
   }
 
   const classificationPrompt = `Classify this request:
-- "code": CREATE/BUILD pages, components, apps, features, or any code generation
+- "add_component": Adding a new component/element to an EXISTING page/project
+- "code": Creating a brand NEW page, app, or complete feature from scratch
 - "ui": ONLY styling/design changes to existing code (not creating new)
 - "fix_error": Fixing errors, bugs, issues, or broken functionality
 - "reasoning": Questions, explanations, planning without building
 - "general": Greetings, simple questions
 
-IMPORTANT: If user wants to CREATE or BUILD anything, classify as "code".
-If user mentions errors or things not working, classify as "fix_error".
+IMPORTANT: 
+- If user wants to ADD something to an existing project, classify as "add_component"
+- If user wants to CREATE something completely new, classify as "code"
+- If user mentions errors or things not working, classify as "fix_error"
 
 Request: "${message.slice(0, 500)}"
 
-Respond with ONLY: code, ui, fix_error, reasoning, or general`;
+Respond with ONLY: add_component, code, ui, fix_error, reasoning, or general`;
 
   try {
     const response = await fetch(LOVABLE_AI_GATEWAY, {
@@ -237,22 +360,22 @@ Respond with ONLY: code, ui, fix_error, reasoning, or general`;
       body: JSON.stringify({
         model: MODELS.fast,
         messages: [{ role: "user", content: classificationPrompt }],
-        max_tokens: 10,
+        max_tokens: 15,
         temperature: 0,
       }),
     });
 
-    if (!response.ok) return "code";
+    if (!response.ok) return existingFiles.length > 0 ? "add_component" : "code";
 
     const data = await response.json();
     const classification = data.choices?.[0]?.message?.content?.toLowerCase().trim();
     
-    if (["code", "ui", "fix_error", "reasoning", "general"].includes(classification)) {
+    if (["add_component", "code", "ui", "fix_error", "reasoning", "general"].includes(classification)) {
       return classification as TaskType;
     }
-    return "code";
+    return existingFiles.length > 0 ? "add_component" : "code";
   } catch {
-    return "code";
+    return existingFiles.length > 0 ? "add_component" : "code";
   }
 }
 
@@ -260,6 +383,8 @@ function getModelConfig(taskType: TaskType): { model: string; systemPrompt: stri
   switch (taskType) {
     case "code":
       return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.code, modelLabel: "Gemini Pro (Code)" };
+    case "add_component":
+      return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.add_component, modelLabel: "Gemini Pro (Smart)" };
     case "ui":
       return { model: MODELS.ui, systemPrompt: SYSTEM_PROMPTS.ui, modelLabel: "Gemini Flash (UI)" };
     case "fix_error":
@@ -275,11 +400,36 @@ function getModelConfig(taskType: TaskType): { model: string; systemPrompt: stri
 function getCreditCost(taskType: TaskType): number {
   switch (taskType) {
     case "code": return 0.15;
+    case "add_component": return 0.15;
     case "ui": return 0.10;
     case "fix_error": return 0.15;
     case "reasoning": return 0.20;
     default: return 0.10;
   }
+}
+
+// Build context from existing files
+function buildProjectContext(files: ProjectFile[]): string {
+  if (!files || files.length === 0) return "";
+  
+  let context = "\n\n📁 EXISTING PROJECT FILES (PRESERVE THESE):\n";
+  context += "════════════════════════════════════════\n\n";
+  
+  for (const file of files) {
+    context += `📄 ${file.path}\n`;
+    context += "```\n";
+    context += file.content.slice(0, 3000); // Limit per file
+    if (file.content.length > 3000) {
+      context += "\n... (truncated)";
+    }
+    context += "\n```\n\n";
+  }
+  
+  context += "════════════════════════════════════════\n";
+  context += "⚠️ IMPORTANT: When modifying these files, preserve ALL existing code!\n";
+  context += "Only ADD new imports and components - don't remove or change existing code.\n";
+  
+  return context;
 }
 
 async function callLovableAI(messages: Message[], model: string, systemPrompt: string, apiKey: string): Promise<string> {
@@ -385,7 +535,7 @@ serve(async (req) => {
       );
     }
 
-    const { projectId, message, conversationHistory, stream } = await req.json() as ChatRequest;
+    const { projectId, message, conversationHistory, stream, existingFiles = [] } = await req.json() as ChatRequest;
     if (!projectId || !message) throw new Error("Missing projectId or message");
 
     const { data: project } = await supabase
@@ -399,12 +549,17 @@ serve(async (req) => {
     const sanitizedMessage = message.slice(0, 10000).trim();
     if (!sanitizedMessage) throw new Error("Empty message");
 
-    const taskType = await classifyTask(sanitizedMessage, lovableApiKey);
+    // Classify task with awareness of existing files
+    const taskType = await classifyTask(sanitizedMessage, existingFiles, lovableApiKey);
     const creditCost = getCreditCost(taskType);
-    console.log(`Task: ${taskType}, Credits: ${creditCost}`);
+    console.log(`Task: ${taskType}, Credits: ${creditCost}, Files: ${existingFiles.length}`);
 
     const { model, systemPrompt, modelLabel } = getModelConfig(taskType);
     console.log(`Model: ${modelLabel}`);
+
+    // Build context from existing files for smart coding
+    const projectContext = buildProjectContext(existingFiles);
+    const enhancedSystemPrompt = systemPrompt + projectContext;
 
     const messages: Message[] = [
       ...conversationHistory.slice(-10),
@@ -416,7 +571,7 @@ serve(async (req) => {
       p_user_id: user.id,
       p_action_type: "ai_chat",
       p_description: `AI Chat: ${taskType}`,
-      p_metadata: { taskType, model: modelLabel, projectId }
+      p_metadata: { taskType, model: modelLabel, projectId, filesCount: existingFiles.length }
     });
 
     const remainingCredits = deductResult?.[0]?.remaining_credits ?? null;
@@ -429,13 +584,14 @@ serve(async (req) => {
       remaining: rateLimitData?.[0]?.remaining ?? null,
       creditsUsed: creditCost,
       remainingCredits,
+      smartMode: existingFiles.length > 0,
     };
 
     if (stream) {
       const gatewayResp = await callLovableAIStream({
         messages,
         model,
-        systemPrompt,
+        systemPrompt: enhancedSystemPrompt,
         apiKey: lovableApiKey,
       });
 
@@ -457,7 +613,7 @@ serve(async (req) => {
       });
     }
 
-    const responseText = await callLovableAI(messages, model, systemPrompt, lovableApiKey);
+    const responseText = await callLovableAI(messages, model, enhancedSystemPrompt, lovableApiKey);
     const duration = Math.floor((Date.now() - startTime) / 1000);
 
     return new Response(
@@ -471,6 +627,7 @@ serve(async (req) => {
           creditsUsed: creditCost,
           remainingCredits,
           duration,
+          smartMode: existingFiles.length > 0,
         },
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

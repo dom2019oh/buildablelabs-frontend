@@ -119,7 +119,15 @@ export default function ProjectWorkspace() {
       content: m.content,
     }));
 
-    // Stream AI response
+    // Get existing files for smart coding context
+    const existingFiles = Array.from(files.values())
+      .slice(0, 5) // Limit to 5 most relevant files to avoid token limits
+      .map(f => ({
+        path: f.path,
+        content: f.content,
+      }));
+
+    // Stream AI response with existing files context
     await streamMessage(
       content,
       projectId!,
@@ -216,9 +224,11 @@ export default function ProjectWorkspace() {
       // On error
       (error) => {
         setStreamingMessage('');
-      }
+      },
+      // Pass existing files for smart coding
+      existingFiles
     );
-  }, [messages, projectId, streamMessage, sendMessage, addFile, setPreviewHtml, handleRefreshPreview, toast, saveFiles, updateProject, createVersion, previewHtml, setSelectedFile]);
+  }, [messages, projectId, streamMessage, sendMessage, addFile, setPreviewHtml, handleRefreshPreview, toast, saveFiles, updateProject, createVersion, previewHtml, setSelectedFile, files]);
 
   const handlePublish = useCallback(async () => {
     setIsPublishing(true);
