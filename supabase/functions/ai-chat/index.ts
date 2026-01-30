@@ -3,7 +3,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+// Lovable AI Gateway endpoint
+const LOVABLE_AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+// Available models via Lovable AI Gateway
+const MODELS = {
+  architect: "openai/gpt-5",           // Reasoning and planning
+  code: "google/gemini-2.5-pro",       // Code generation
+  ui: "google/gemini-3-flash-preview", // UI/UX and design
+  fast: "google/gemini-2.5-flash-lite", // Fast classification
 };
 
 // Task classification types
@@ -20,29 +31,125 @@ interface ChatRequest {
   conversationHistory: Message[];
 }
 
-// Classify the task to determine which model to use
-async function classifyTask(message: string, openaiKey: string): Promise<TaskType> {
-  const classificationPrompt = `You are a task classifier for an AI code builder. Analyze the user's request and classify it into exactly one category.
+// System prompts for different task types
+const SYSTEM_PROMPTS = {
+  code: `You are Buildify's CODE GENERATION engine. You generate production-ready code.
 
-Categories:
-- "code": Writing new code, creating components, modifying existing code, fixing bugs, refactoring, adding features, file changes, logic changes, API integration, database operations, creating pages
-- "ui": Layout changes, styling, spacing, colors, fonts, component arrangement, visual improvements, UX improvements, animations, responsive design, making things look better
-- "reasoning": Planning, explaining concepts, breaking down complex tasks, architecture decisions, answering questions, comparing options, giving advice
-- "general": Simple greetings, clarifications, thank you messages, or non-technical requests
+Your capabilities:
+- Generate complete, working React components with TypeScript
+- Write clean, maintainable, well-structured code
+- Use Tailwind CSS for all styling (no inline styles)
+- Follow modern React patterns (hooks, functional components)
+- Handle edge cases and error states
+- Create responsive, accessible UI
 
-User request: "${message}"
+CRITICAL - Project Structure Rules:
+When creating a new project or feature, ALWAYS generate a proper file structure:
+1. Create files with proper paths (e.g., src/components/Hero.tsx, src/pages/About.tsx)
+2. Include mandatory files: public/favicon.png, public/robots.txt, public/placeholder.svg
+3. Use this format for code blocks:
 
-Respond with ONLY the category name (code, ui, reasoning, or general), nothing else.`;
+\`\`\`tsx:src/components/ComponentName.tsx
+// Component code here
+\`\`\`
+
+Code Generation Rules:
+1. ALWAYS provide complete, runnable code - never partial snippets
+2. Use TypeScript with proper type definitions
+3. Use Tailwind CSS classes for all styling
+4. Include all necessary imports
+5. Add helpful comments for complex logic
+6. Use shadcn/ui components when appropriate (Button, Card, Input, etc.)
+7. Follow the component structure: imports → types → component → export
+
+Response Format:
+- Start with a brief explanation of what you're building (1-2 sentences)
+- List the files being created
+- Provide complete code for each file in properly tagged code blocks
+- End with integration instructions`,
+
+  ui: `You are Buildify's UI/UX SPECIALIST, focused on visual design and user experience.
+
+Your expertise:
+- Layout composition and visual hierarchy
+- Spacing, padding, and margins (using Tailwind spacing scale)
+- Color schemes and contrast (using Tailwind colors or CSS variables)
+- Typography and font pairing
+- Component organization and structure
+- Responsive design patterns
+- Micro-interactions and animations with Framer Motion
+- Accessibility best practices
+
+Response Guidelines:
+1. Provide specific, actionable recommendations
+2. Use exact Tailwind CSS classes (e.g., "p-4", "gap-6", "text-lg")
+3. When suggesting colors, use semantic tokens (bg-primary, text-muted-foreground) or Tailwind colors
+4. Include complete code examples showing the improved styling
+5. Explain WHY each change improves the UI
+
+CRITICAL - Always provide file paths:
+\`\`\`tsx:src/components/ComponentName.tsx
+// Complete component code
+\`\`\`
+
+Always provide complete, usable code that can be directly implemented.`,
+
+  reasoning: `You are Buildify, an advanced AI product builder. You help users build production-ready web applications.
+
+Your role as the ARCHITECT:
+- Understand what the user wants to build
+- Break down complex requests into clear, actionable steps
+- Explain architecture decisions and best practices
+- Guide users through the development process
+- Provide clear, concise explanations
+
+When a user asks to build something, create a comprehensive plan:
+1. List the pages/components needed
+2. Describe the file structure
+3. Outline the features to implement
+4. Suggest any database/backend requirements
+
+Tech Stack: React + TypeScript + Tailwind CSS + Supabase + shadcn/ui
+
+Response Guidelines:
+- Be conversational but professional
+- Use bullet points for lists and steps
+- Keep responses focused and actionable
+- When discussing features, be specific about implementation
+- Suggest improvements when appropriate`,
+
+  general: `You are Buildify, a friendly AI assistant for web development.
+
+Keep responses brief and helpful. If the user greets you or asks a simple question, respond conversationally.
+
+For technical questions, provide clear, accurate answers about:
+- React, TypeScript, Tailwind CSS
+- Web development best practices
+- UI/UX principles
+- Supabase and backend concepts`,
+};
+
+// Classify the task using the fast model
+async function classifyTask(message: string, apiKey: string): Promise<TaskType> {
+  const classificationPrompt = `Classify this request into exactly one category:
+- "code": Writing code, creating components, fixing bugs, adding features, file changes
+- "ui": Layout, styling, colors, fonts, visual improvements, animations, design
+- "reasoning": Planning, explaining, architecture, comparing options, advice
+- "general": Greetings, simple questions, thank you, clarifications
+
+Request: "${message.slice(0, 500)}"
+
+Respond with ONLY the category name.`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(LOVABLE_AI_GATEWAY, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openaiKey}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: MODELS.fast,
         messages: [{ role: "user", content: classificationPrompt }],
         max_tokens: 10,
         temperature: 0,
@@ -55,7 +162,7 @@ Respond with ONLY the category name (code, ui, reasoning, or general), nothing e
     }
 
     const data = await response.json();
-    const classification = data.choices[0]?.message?.content?.toLowerCase().trim();
+    const classification = data.choices?.[0]?.message?.content?.toLowerCase().trim();
     
     if (["code", "ui", "reasoning", "general"].includes(classification)) {
       return classification as TaskType;
@@ -67,228 +174,75 @@ Respond with ONLY the category name (code, ui, reasoning, or general), nothing e
   }
 }
 
-// Call OpenAI for reasoning/coordination and as fallback
-async function callOpenAI(messages: Message[], apiKey: string, taskType: TaskType = "reasoning"): Promise<string> {
-  let systemPrompt: string;
-  
+// Get model configuration based on task type
+function getModelConfig(taskType: TaskType): { model: string; systemPrompt: string; modelLabel: string } {
   switch (taskType) {
     case "code":
-      systemPrompt = `You are Buildify's CODE GENERATION engine. You generate production-ready code.
-
-Your capabilities:
-- Generate complete, working React components with TypeScript
-- Write clean, maintainable, well-structured code
-- Use Tailwind CSS for all styling (no inline styles)
-- Follow modern React patterns (hooks, functional components)
-- Handle edge cases and error states
-- Create responsive, accessible UI
-
-Code Generation Rules:
-1. ALWAYS provide complete, runnable code - never partial snippets
-2. Use TypeScript with proper type definitions
-3. Use Tailwind CSS classes for all styling
-4. Include all necessary imports
-5. Add helpful comments for complex logic
-6. Use shadcn/ui components when appropriate (Button, Card, Input, etc.)
-7. Follow the component structure: imports → types → component → export
-
-Response Format:
-- Start with a brief explanation of what you're building (1-2 sentences)
-- Provide the complete code in a code block with proper language tag
-- End with a brief note on how to use/integrate the component`;
-      break;
+      return {
+        model: MODELS.code,
+        systemPrompt: SYSTEM_PROMPTS.code,
+        modelLabel: "Gemini Pro (Code)",
+      };
     case "ui":
-      systemPrompt = `You are Buildify's UI/UX SPECIALIST, focused on visual design and user experience.
-
-Your expertise:
-- Layout composition and visual hierarchy
-- Spacing, padding, and margins (using Tailwind spacing scale)
-- Color schemes and contrast (using Tailwind colors or CSS variables)
-- Typography and font pairing
-- Component organization and structure
-- Responsive design patterns
-- Micro-interactions and animations
-- Accessibility best practices
-
-Response Guidelines:
-1. Provide specific, actionable recommendations
-2. Use exact Tailwind CSS classes (e.g., "p-4", "gap-6", "text-lg")
-3. When suggesting colors, use semantic tokens (bg-primary, text-muted-foreground) or Tailwind colors
-4. Include code examples showing the improved styling
-5. Explain WHY each change improves the UI
-
-Always provide complete, usable code that can be directly implemented.`;
-      break;
+      return {
+        model: MODELS.ui,
+        systemPrompt: SYSTEM_PROMPTS.ui,
+        modelLabel: "Gemini Flash (UI)",
+      };
+    case "reasoning":
+      return {
+        model: MODELS.architect,
+        systemPrompt: SYSTEM_PROMPTS.reasoning,
+        modelLabel: "GPT-5 (Architect)",
+      };
+    case "general":
     default:
-      systemPrompt = `You are Buildify, an advanced AI product builder. You help users build production-ready web applications.
-
-Your role as the REASONING MODEL:
-- Understand what the user wants to build
-- Break down complex requests into clear, actionable steps
-- Explain architecture decisions and best practices
-- Guide users through the development process
-- Provide clear, concise explanations
-
-Response Guidelines:
-- Be conversational but professional
-- Use bullet points for lists and steps
-- Keep responses focused and actionable
-- When discussing features, be specific about implementation
-- Suggest improvements when appropriate
-
-You work with a React + TypeScript + Tailwind CSS + Supabase stack.`;
+      return {
+        model: MODELS.fast,
+        systemPrompt: SYSTEM_PROMPTS.general,
+        modelLabel: "Gemini Lite (Fast)",
+      };
   }
+}
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+// Call Lovable AI Gateway
+async function callLovableAI(
+  messages: Message[], 
+  model: string, 
+  systemPrompt: string, 
+  apiKey: string
+): Promise<string> {
+  const response = await fetch(LOVABLE_AI_GATEWAY, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model,
       messages: [
         { role: "system", content: systemPrompt },
         ...messages,
       ],
-      max_tokens: 4000,
+      max_tokens: 4096,
       temperature: 0.7,
     }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0]?.message?.content || "I apologize, I couldn't generate a response.";
-}
-
-// Call Claude for code-related tasks
-async function callClaude(messages: Message[], apiKey: string): Promise<string> {
-  const systemPrompt = `You are Buildify's CODE GENERATION engine, similar to Lovable. You generate production-ready code.
-
-Your capabilities:
-- Generate complete, working React components with TypeScript
-- Write clean, maintainable, well-structured code
-- Use Tailwind CSS for all styling (no inline styles)
-- Follow modern React patterns (hooks, functional components)
-- Handle edge cases and error states
-- Create responsive, accessible UI
-
-Code Generation Rules:
-1. ALWAYS provide complete, runnable code - never partial snippets
-2. Use TypeScript with proper type definitions
-3. Use Tailwind CSS classes for all styling
-4. Include all necessary imports
-5. Add helpful comments for complex logic
-6. Use shadcn/ui components when appropriate (Button, Card, Input, etc.)
-7. Follow the component structure: imports → types → component → export
-
-Response Format:
-- Start with a brief explanation of what you're building (1-2 sentences)
-- Provide the complete code in a code block with proper language tag
-- End with a brief note on how to use/integrate the component
-
-Example output format:
-I'll create a [component name] that [brief description].
-
-\`\`\`tsx
-// Complete working code here
-\`\`\`
-
-This component [brief usage note].`;
-
-  const anthropicMessages = messages.map(m => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: m.content,
-  }));
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: anthropicMessages,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Claude API error: ${error}`);
-  }
-
-  const data = await response.json();
-  return data.content[0]?.text || "I apologize, I couldn't generate a response.";
-}
-
-// Call Gemini for UI/UX tasks
-async function callGemini(messages: Message[], apiKey: string): Promise<string> {
-  const systemPrompt = `You are Buildify's UI/UX SPECIALIST, focused on visual design and user experience.
-
-Your expertise:
-- Layout composition and visual hierarchy
-- Spacing, padding, and margins (using Tailwind spacing scale)
-- Color schemes and contrast (using Tailwind colors or CSS variables)
-- Typography and font pairing
-- Component organization and structure
-- Responsive design patterns
-- Micro-interactions and animations
-- Accessibility best practices
-
-Response Guidelines:
-1. Provide specific, actionable recommendations
-2. Use exact Tailwind CSS classes (e.g., "p-4", "gap-6", "text-lg")
-3. When suggesting colors, use semantic tokens (bg-primary, text-muted-foreground) or Tailwind colors
-4. Include code examples showing the improved styling
-5. Explain WHY each change improves the UI
-
-Response Format:
-- Start with an assessment of the current UI (1-2 sentences)
-- List specific improvements with Tailwind classes
-- Provide a code example showing the changes
-- Summarize the visual impact
-
-Always provide complete, usable code that can be directly implemented.`;
-
-  const contents = [
-    { role: "user", parts: [{ text: systemPrompt }] },
-    { role: "model", parts: [{ text: "I understand. I'm Buildify's UI/UX specialist. I'll provide specific, actionable improvements with exact Tailwind classes and complete code examples." }] },
-    ...messages.map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
-  ];
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 3000,
-        },
-      }),
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded. Please try again later.");
     }
-  );
-
-  if (!response.ok) {
+    if (response.status === 402) {
+      throw new Error("Credits exhausted. Please add credits to continue.");
+    }
     const error = await response.text();
-    throw new Error(`Gemini API error: ${error}`);
+    console.error("Lovable AI Gateway error:", response.status, error);
+    throw new Error(`AI Gateway error: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "I apologize, I couldn't generate a response.";
+  return data.choices?.[0]?.message?.content || "I apologize, I couldn't generate a response.";
 }
 
 serve(async (req) => {
@@ -298,13 +252,11 @@ serve(async (req) => {
   }
 
   try {
-    // Get API keys
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    const claudeKey = Deno.env.get("CLAUDE_API_KEY");
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-
-    if (!openaiKey) {
-      throw new Error("Missing OpenAI API key");
+    // Get Lovable API key (automatically provided)
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    
+    if (!lovableApiKey) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     // Verify auth
@@ -373,8 +325,12 @@ serve(async (req) => {
 
     // Classify the task
     console.log("Classifying task...");
-    const taskType = await classifyTask(sanitizedMessage, openaiKey);
+    const taskType = await classifyTask(sanitizedMessage, lovableApiKey);
     console.log(`Task classified as: ${taskType}`);
+
+    // Get model configuration
+    const { model, systemPrompt, modelLabel } = getModelConfig(taskType);
+    console.log(`Using model: ${modelLabel}`);
 
     // Build conversation context (limit to last 10 messages)
     const recentHistory = conversationHistory.slice(-10);
@@ -383,53 +339,8 @@ serve(async (req) => {
       { role: "user", content: sanitizedMessage },
     ];
 
-    // Route to appropriate model with fallback to OpenAI
-    let response: string;
-    let modelUsed: string;
-
-    switch (taskType) {
-      case "code":
-        // Try Claude first, fallback to OpenAI
-        if (claudeKey) {
-          try {
-            console.log("Routing to Claude for code task");
-            response = await callClaude(messages, claudeKey);
-            modelUsed = "claude";
-          } catch (error) {
-            console.warn("Claude failed, falling back to OpenAI:", error);
-            response = await callOpenAI(messages, openaiKey, "code");
-            modelUsed = "openai";
-          }
-        } else {
-          response = await callOpenAI(messages, openaiKey, "code");
-          modelUsed = "openai";
-        }
-        break;
-      case "ui":
-        // Try Gemini first, fallback to OpenAI
-        if (geminiKey) {
-          try {
-            console.log("Routing to Gemini for UI task");
-            response = await callGemini(messages, geminiKey);
-            modelUsed = "gemini";
-          } catch (error) {
-            console.warn("Gemini failed, falling back to OpenAI:", error);
-            response = await callOpenAI(messages, openaiKey, "ui");
-            modelUsed = "openai";
-          }
-        } else {
-          response = await callOpenAI(messages, openaiKey, "ui");
-          modelUsed = "openai";
-        }
-        break;
-      case "reasoning":
-      case "general":
-      default:
-        console.log("Routing to OpenAI for reasoning/general task");
-        response = await callOpenAI(messages, openaiKey);
-        modelUsed = "openai";
-        break;
-    }
+    // Call Lovable AI Gateway
+    const response = await callLovableAI(messages, model, systemPrompt, lovableApiKey);
 
     // Return response with metadata
     return new Response(
@@ -437,7 +348,8 @@ serve(async (req) => {
         response,
         metadata: {
           taskType,
-          modelUsed,
+          modelUsed: modelLabel,
+          model,
           remaining: rateLimitData?.[0]?.remaining ?? null,
         },
       }),
@@ -449,7 +361,8 @@ serve(async (req) => {
     
     const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
     const status = errorMessage.includes("Unauthorized") ? 401 : 
-                   errorMessage.includes("Rate limit") ? 429 : 500;
+                   errorMessage.includes("Rate limit") ? 429 :
+                   errorMessage.includes("Credits") ? 402 : 500;
 
     return new Response(
       JSON.stringify({ error: errorMessage }),
