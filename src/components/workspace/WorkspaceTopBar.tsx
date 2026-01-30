@@ -50,7 +50,7 @@ export default function WorkspaceTopBar({
 }: WorkspaceTopBarProps) {
   const viewButtons = [
     { id: 'preview' as const, icon: Globe, label: 'Preview' },
-    { id: 'code' as const, icon: Code2, label: 'Code', disabled: true },
+    { id: 'code' as const, icon: Code2, label: 'Code' },
     { id: 'logs' as const, icon: Terminal, label: 'Logs', disabled: true },
   ];
 
