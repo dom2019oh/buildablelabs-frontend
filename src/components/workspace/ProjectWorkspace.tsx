@@ -17,6 +17,7 @@ import FileExplorer from './FileExplorer';
 import CodeViewer from './CodeViewer';
 import VersionHistoryPanel from './VersionHistoryPanel';
 import ComponentLibraryPanel from './ComponentLibraryPanel';
+import LogsPanel from './LogsPanel';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ProjectWorkspace() {
@@ -608,9 +609,7 @@ export default function ProjectWorkspace() {
               </div>
             </>
           ) : activeView === 'logs' ? (
-            <div className="flex-1 h-full flex items-center justify-center text-muted-foreground bg-[#1e1e1e]">
-              <p>Logs view coming soon...</p>
-            </div>
+            <LogsPanel className="flex-1 h-full" />
           ) : (
             /* Preview Panel */
             <div className="flex-1 h-full">

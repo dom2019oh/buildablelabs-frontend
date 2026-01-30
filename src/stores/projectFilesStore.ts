@@ -308,6 +308,18 @@ export function generatePreviewHtml(componentCode: string, cssCode?: string): st
       box-sizing: border-box;
     }
     
+    /* Hide scrollbar for preview */
+    html, body {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      overflow-x: hidden;
+    }
+    
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar {
+      display: none;
+    }
+    
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
       background: hsl(var(--background));
@@ -351,68 +363,121 @@ export function compileComponentToHtml(tsxCode: string): string {
 function convertJsxToStaticHtml(jsx: string, fullCode: string): string {
   let html = jsx;
   
-  // 1. Find and expand array maps (e.g., {features.map((feature, index) => ...)})
-  const mapMatches = html.matchAll(/\{(\w+)\.map\(\((\w+)(?:,\s*(\w+))?\)\s*=>\s*\(([\s\S]*?)\)\)\}/g);
+  // 1. Find and expand ALL map patterns more robustly
+  // Handle: {array.map((item, index) => ( ... ))}
+  // Handle: {array.map((item) => ( ... ))}
+  // Handle nested parentheses properly
   
-  for (const match of Array.from(mapMatches)) {
-    const arrayName = match[1];
-    const itemName = match[2];
-    const indexName = match[3];
-    const template = match[4];
+  const expandMaps = (htmlInput: string): string => {
+    // Regex to match .map() patterns with balanced parentheses
+    const mapPattern = /\{(\w+)\.map\(\s*\((\w+)(?:,\s*(\w+))?\)\s*=>\s*\(/g;
     
-    // Find the array definition in the code
-    const arrayMatch = fullCode.match(new RegExp(`const\\s+${arrayName}\\s*=\\s*\\[([\\s\\S]*?)\\];`, 'm'));
+    let result = htmlInput;
+    let match;
+    const mapPatternCopy = new RegExp(mapPattern);
     
-    if (arrayMatch) {
-      try {
-        // Parse the array items (simplified - handles basic objects)
-        const arrayContent = arrayMatch[1];
-        const items = parseArrayItems(arrayContent);
-        
-        // Expand the map into static HTML
-        let expandedHtml = '';
-        items.forEach((item, index) => {
-          let itemHtml = template;
+    while ((match = mapPatternCopy.exec(htmlInput)) !== null) {
+      const startIndex = match.index;
+      const arrayName = match[1];
+      const itemName = match[2];
+      const indexName = match[3];
+      
+      // Find the matching closing ))} by counting parentheses
+      let depth = 2; // We start after "=> ("
+      let endIndex = startIndex + match[0].length;
+      
+      while (depth > 0 && endIndex < htmlInput.length) {
+        const char = htmlInput[endIndex];
+        if (char === '(') depth++;
+        else if (char === ')') depth--;
+        endIndex++;
+      }
+      
+      // Need to also consume the closing }
+      while (endIndex < htmlInput.length && htmlInput[endIndex] !== '}') {
+        endIndex++;
+      }
+      endIndex++; // Include the final }
+      
+      const fullMatch = htmlInput.substring(startIndex, endIndex);
+      const templateStart = match[0].length;
+      const templateEnd = fullMatch.length - 3; // Remove "))}""
+      const template = fullMatch.substring(templateStart, templateEnd);
+      
+      // Find the array definition in the code
+      const arrayRegex = new RegExp(`const\\s+${arrayName}\\s*=\\s*\\[([\\s\\S]*?)\\];`, 'm');
+      const arrayMatch = fullCode.match(arrayRegex);
+      
+      if (arrayMatch) {
+        try {
+          const items = parseArrayItems(arrayMatch[1]);
           
-          // Replace item property references
-          Object.entries(item).forEach(([key, value]) => {
-            // Replace {item.property} patterns
-            itemHtml = itemHtml.replace(new RegExp(`\\{${itemName}\\.${key}\\}`, 'g'), String(value));
-            // Replace {item["property"]} patterns
-            itemHtml = itemHtml.replace(new RegExp(`\\{${itemName}\\["${key}"\\]\\}`, 'g'), String(value));
+          // Expand the map into static HTML
+          let expandedHtml = '';
+          items.forEach((item, index) => {
+            let itemHtml = template;
+            
+            // Replace item property references
+            Object.entries(item).forEach(([key, value]) => {
+              // Replace {item.property} patterns
+              const propPattern = new RegExp(`\\{${itemName}\\.${key}\\}`, 'g');
+              itemHtml = itemHtml.replace(propPattern, String(value));
+            });
+            
+            // Replace index references
+            if (indexName) {
+              const indexPattern = new RegExp(`\\{${indexName}\\}`, 'g');
+              itemHtml = itemHtml.replace(indexPattern, String(index));
+            }
+            
+            // Handle key={...} props - remove them as they're React-specific
+            itemHtml = itemHtml.replace(/\s*key=\{[^}]+\}/g, '');
+            
+            // Handle icon components - convert to SVG placeholder
+            itemHtml = itemHtml.replace(/<(\w+)\.icon\s+className="([^"]+)"\s*\/>/g, 
+              '<svg class="$2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>');
+            itemHtml = itemHtml.replace(/<feature\.icon\s+className="([^"]+)"\s*\/>/gi,
+              '<svg class="$1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>');
+            itemHtml = itemHtml.replace(/<item\.icon\s+className="([^"]+)"\s*\/>/gi,
+              '<svg class="$1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>');
+            
+            expandedHtml += itemHtml;
           });
           
-          // Replace index references
-          if (indexName) {
-            itemHtml = itemHtml.replace(new RegExp(`\\{${indexName}\\}`, 'g'), String(index));
-          }
-          
-          // Handle icon components - convert to placeholder div
-          itemHtml = itemHtml.replace(/<(\w+)\.icon\s+className="([^"]+)"\s*\/>/g, 
-            '<div class="$2 flex items-center justify-center"><span>★</span></div>');
-          itemHtml = itemHtml.replace(/<(\w+)Icon\s+className="([^"]+)"\s*\/>/g,
-            '<div class="$2 flex items-center justify-center"><span>★</span></div>');
-          
-          expandedHtml += itemHtml;
-        });
-        
-        html = html.replace(match[0], expandedHtml);
-      } catch (e) {
-        console.error('Failed to expand map:', e);
+          result = result.replace(fullMatch, expandedHtml);
+        } catch (e) {
+          console.error('Failed to expand map:', e);
+          // Remove the failed map expression to avoid showing raw JSX
+          result = result.replace(fullMatch, '');
+        }
+      } else {
+        // If array not found, remove the map expression
+        result = result.replace(fullMatch, '');
       }
     }
-  }
+    
+    return result;
+  };
   
-  // 2. Convert JSX syntax to HTML
+  html = expandMaps(html);
+  
+  // 2. Remove any remaining JSX expressions that weren't handled (like {variable})
+  // But preserve the content structure
+  html = html.replace(/\{[a-zA-Z_][a-zA-Z0-9_]*\}/g, '');
+  
+  // 3. Convert JSX syntax to HTML
   html = html
     // Convert className to class
     .replace(/className=/g, 'class=')
-    // Remove JSX expressions we couldn't handle
+    // Remove React-specific props
+    .replace(/\s*key=\{[^}]+\}/g, '')
+    .replace(/\s*onClick=\{[^}]+\}/g, '')
+    .replace(/\s*onChange=\{[^}]+\}/g, '')
+    .replace(/\s*onSubmit=\{[^}]+\}/g, '')
+    // Remove remaining unhandled JSX expressions
     .replace(/\{[^{}]*\}/g, '')
     // Convert self-closing tags properly
     .replace(/<(\w+)([^>]*)\s*\/>/g, '<$1$2></$1>')
-    // Remove event handlers
-    .replace(/on\w+={[^}]*}/g, '')
     // Clean up multiple spaces
     .replace(/\s+/g, ' ')
     .trim();
@@ -420,30 +485,72 @@ function convertJsxToStaticHtml(jsx: string, fullCode: string): string {
   return html;
 }
 
-// Parse array items from string (simplified parser)
+// Parse array items from string (improved parser)
 function parseArrayItems(arrayContent: string): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = [];
   
-  // Match object literals: { ... }
-  const objectMatches = arrayContent.matchAll(/\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g);
+  // Split by top-level objects using balanced brace matching
+  let depth = 0;
+  let currentItem = '';
+  let inString = false;
+  let stringChar = '';
   
-  for (const match of Array.from(objectMatches)) {
-    const obj: Record<string, unknown> = {};
-    const content = match[1];
+  for (let i = 0; i < arrayContent.length; i++) {
+    const char = arrayContent[i];
+    const prevChar = i > 0 ? arrayContent[i - 1] : '';
     
-    // Extract key-value pairs
-    const pairMatches = content.matchAll(/(\w+):\s*(?:"([^"]+)"|'([^']+)'|(\w+))/g);
-    
-    for (const pair of Array.from(pairMatches)) {
-      const key = pair[1];
-      const value = pair[2] || pair[3] || pair[4];
-      obj[key] = value;
+    // Handle string boundaries
+    if ((char === '"' || char === "'") && prevChar !== '\\') {
+      if (!inString) {
+        inString = true;
+        stringChar = char;
+      } else if (char === stringChar) {
+        inString = false;
+      }
     }
     
-    if (Object.keys(obj).length > 0) {
-      items.push(obj);
+    if (!inString) {
+      if (char === '{') {
+        if (depth === 0) currentItem = '';
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          currentItem += char;
+          const obj = parseObjectLiteral(currentItem);
+          if (Object.keys(obj).length > 0) {
+            items.push(obj);
+          }
+          currentItem = '';
+          continue;
+        }
+      }
+    }
+    
+    if (depth > 0) {
+      currentItem += char;
     }
   }
   
   return items;
+}
+
+// Parse a single object literal
+function parseObjectLiteral(objStr: string): Record<string, unknown> {
+  const obj: Record<string, unknown> = {};
+  
+  // Remove outer braces
+  const content = objStr.slice(1, -1).trim();
+  
+  // Match key-value pairs, handling strings and identifiers
+  const pairRegex = /(\w+)\s*:\s*(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`|(\w+))/g;
+  
+  let match;
+  while ((match = pairRegex.exec(content)) !== null) {
+    const key = match[1];
+    const value = match[2] ?? match[3] ?? match[4] ?? match[5];
+    obj[key] = value;
+  }
+  
+  return obj;
 }

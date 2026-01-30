@@ -75,7 +75,7 @@ export default function WorkspaceTopBar({
   const viewButtons = [
     { id: 'preview' as const, icon: Globe, label: 'Preview' },
     { id: 'code' as const, icon: Code2, label: 'Code' },
-    { id: 'logs' as const, icon: Terminal, label: 'Logs', disabled: true },
+    { id: 'logs' as const, icon: Terminal, label: 'Logs' },
   ];
 
   return (
@@ -174,14 +174,12 @@ export default function WorkspaceTopBar({
               key={btn.id}
               variant="ghost"
               size="sm"
-              disabled={btn.disabled}
               className={cn(
                 'h-7 px-2.5 gap-1.5 rounded-sm text-xs font-medium',
                 activeView === btn.id && 'bg-background shadow-sm text-foreground',
-                activeView !== btn.id && 'text-muted-foreground hover:text-foreground',
-                btn.disabled && 'opacity-50 cursor-not-allowed'
+                activeView !== btn.id && 'text-muted-foreground hover:text-foreground'
               )}
-              onClick={() => !btn.disabled && onViewChange(btn.id)}
+              onClick={() => onViewChange(btn.id)}
             >
               <btn.icon className="h-3.5 w-3.5" />
               <span>{btn.label}</span>
