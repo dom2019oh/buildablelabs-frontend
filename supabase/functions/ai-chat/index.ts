@@ -29,6 +29,7 @@ interface ChatRequest {
   projectId: string;
   message: string;
   conversationHistory: Message[];
+  stream?: boolean;
 }
 
 // System prompts for different task types
@@ -136,6 +137,8 @@ async function classifyTask(message: string, apiKey: string): Promise<TaskType> 
 - "ui": Layout, styling, colors, fonts, visual improvements, animations, design
 - "reasoning": Planning, explaining, architecture, comparing options, advice
 - "general": Greetings, simple questions, thank you, clarifications
+
+IMPORTANT RULE: If the user is asking to CREATE/BUILD a page, component, app, landing page, dashboard, route, or wants "generate files" / "write code", you MUST classify as "code" even if they also mention colors, gradients, or styling.
 
 Request: "${message.slice(0, 500)}"
 
@@ -245,6 +248,44 @@ async function callLovableAI(
   return data.choices?.[0]?.message?.content || "I apologize, I couldn't generate a response.";
 }
 
+async function callLovableAIStream(opts: {
+  messages: Message[];
+  model: string;
+  systemPrompt: string;
+  apiKey: string;
+}): Promise<Response> {
+  const response = await fetch(LOVABLE_AI_GATEWAY, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${opts.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: opts.model,
+      messages: [
+        { role: "system", content: opts.systemPrompt },
+        ...opts.messages,
+      ],
+      stream: true,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 429) throw new Error("Rate limit exceeded. Please try again later.");
+    if (response.status === 402) throw new Error("Credits exhausted. Please add credits to continue.");
+    const error = await response.text();
+    console.error("Lovable AI Gateway error:", response.status, error);
+    throw new Error(`AI Gateway error: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error("AI Gateway returned no body");
+  }
+
+  return response;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -299,7 +340,7 @@ serve(async (req) => {
     }
 
     // Parse request
-    const { projectId, message, conversationHistory } = await req.json() as ChatRequest;
+    const { projectId, message, conversationHistory, stream } = await req.json() as ChatRequest;
 
     if (!projectId || !message) {
       throw new Error("Missing required fields: projectId and message");
@@ -339,13 +380,51 @@ serve(async (req) => {
       { role: "user", content: sanitizedMessage },
     ];
 
-    // Call Lovable AI Gateway
-    const response = await callLovableAI(messages, model, systemPrompt, lovableApiKey);
+    const metadataEvent = {
+      type: "metadata",
+      taskType,
+      modelUsed: modelLabel,
+      model,
+      remaining: rateLimitData?.[0]?.remaining ?? null,
+    };
 
-    // Return response with metadata
+    // Streaming mode (SSE)
+    if (stream) {
+      const gatewayResp = await callLovableAIStream({
+        messages,
+        model,
+        systemPrompt,
+        apiKey: lovableApiKey,
+      });
+
+      const encoder = new TextEncoder();
+      const ts = new TransformStream<Uint8Array, Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadataEvent)}\n\n`));
+        },
+      });
+
+      // Prepend metadata, then pipe the gateway SSE through
+      gatewayResp.body!.pipeTo(ts.writable).catch((e) => {
+        console.error("Stream pipe error:", e);
+      });
+
+      return new Response(ts.readable, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
+    }
+
+    // Non-streaming mode
+    const responseText = await callLovableAI(messages, model, systemPrompt, lovableApiKey);
+
     return new Response(
       JSON.stringify({
-        response,
+        response: responseText,
         metadata: {
           taskType,
           modelUsed: modelLabel,
