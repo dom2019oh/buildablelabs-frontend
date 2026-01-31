@@ -2,15 +2,12 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, 
-  Plus, 
   ThumbsUp, 
   ThumbsDown, 
   Copy, 
   MoreHorizontal,
   PanelLeftClose,
   Loader2,
-  Paperclip,
-  Image as ImageIcon,
   Brain,
   Code2,
   Palette,
@@ -24,6 +21,7 @@ import { cn } from '@/lib/utils';
 import type { ProjectMessage } from '@/hooks/useProjectMessages';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingIndicator from './ThinkingIndicator';
+import AIErrorMessage from './AIErrorMessage';
 import buildableLogo from '@/assets/buildify-logo.png';
 import {
   DropdownMenu,
@@ -42,6 +40,9 @@ interface ProjectChatProps {
   onCollapse: () => void;
   projectName: string;
   filesCreated?: string[];
+  lastError?: string | null;
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
 // Model badge component to show which AI model responded
@@ -87,6 +88,9 @@ export default function ProjectChat({
   onCollapse,
   projectName,
   filesCreated = [],
+  lastError = null,
+  onRetry,
+  isRetrying = false,
 }: ProjectChatProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -264,9 +268,20 @@ export default function ProjectChat({
           modelUsed={streamingMetadata?.modelUsed}
         />
 
+        {/* Error Message Display */}
+        <AnimatePresence>
+          {lastError && !isSending && !isStreaming && (
+            <AIErrorMessage 
+              error={lastError} 
+              onRetry={onRetry}
+              isRetrying={isRetrying}
+            />
+          )}
+        </AnimatePresence>
+
         {/* Files Created Notification */}
         <AnimatePresence>
-          {filesCreated.length > 0 && !isSending && !isStreaming && (
+          {filesCreated.length > 0 && !isSending && !isStreaming && !lastError && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
