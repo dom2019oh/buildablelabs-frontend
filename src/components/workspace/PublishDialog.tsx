@@ -5,10 +5,11 @@ import {
   Loader2, 
   ExternalLink, 
   Check, 
-  AlertCircle,
+  AlertTriangle,
   Sparkles,
   Lock,
-  Copy
+  Copy,
+  Info
 } from 'lucide-react';
 import {
   Dialog,
@@ -94,11 +95,31 @@ export default function PublishDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Demo Notice */}
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm mb-1 text-amber-700">Demo Mode</div>
+                <p className="text-xs text-amber-600/80">
+                  Publishing is simulated in this demo. Real deployment requires connecting to a hosting platform. 
+                  The URL shown is for demonstration purposes only.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
           {/* URL Preview */}
           <div className="rounded-lg bg-muted/50 border border-border p-4">
-            <div className="text-xs text-muted-foreground mb-1">Your project will be live at:</div>
+            <div className="text-xs text-muted-foreground mb-1">Your project would be live at:</div>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-sm font-mono text-foreground truncate">
+              <code className="flex-1 text-sm font-mono text-foreground truncate opacity-60">
                 {deployedUrl || expectedUrl}
               </code>
               {deployedUrl && (
@@ -123,7 +144,7 @@ export default function PublishDialog({
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm mb-1">Free Plan</div>
                   <p className="text-xs text-muted-foreground">
-                    Your published site will include a small "Built with Buildable Labs" badge.
+                    Published sites include a "Built with Buildable Labs" badge.
                     Upgrade to remove branding.
                   </p>
                 </div>
@@ -144,9 +165,9 @@ export default function PublishDialog({
             <div className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/30">
               <span className="text-sm">Live Status</span>
               {deployedUrl ? (
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                  <Globe className="h-3 w-3 mr-1" />
-                  Published
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                  <Info className="h-3 w-3 mr-1" />
+                  Simulated
                 </Badge>
               ) : (
                 <Badge variant="outline" className="bg-muted text-muted-foreground">
@@ -167,16 +188,11 @@ export default function PublishDialog({
               <div className="h-12 w-12 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-3">
                 <Check className="h-6 w-6 text-emerald-500" />
               </div>
-              <div className="font-medium text-emerald-600 mb-1">Published Successfully!</div>
-              <a
-                href={deployedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-              >
-                View Live Site
-                <ExternalLink className="h-3 w-3" />
-              </a>
+              <div className="font-medium text-emerald-600 mb-1">Publish Simulated!</div>
+              <p className="text-xs text-muted-foreground mb-2">
+                In production, your site would be live at:
+              </p>
+              <code className="text-sm text-primary">{deployedUrl}</code>
             </motion.div>
           )}
         </div>
@@ -232,7 +248,7 @@ export default function PublishDialog({
               ) : (
                 <>
                   <Globe className="h-4 w-4 mr-2" />
-                  Publish Now
+                  Simulate Publish
                 </>
               )}
             </Button>
