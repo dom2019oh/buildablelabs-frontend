@@ -10,11 +10,12 @@ const corsHeaders = {
 const LOVABLE_AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
 // Available models via Lovable AI Gateway
+// IMPORTANT: Use exact model names as per Lovable AI documentation
 const MODELS = {
-  architect: "openai/gpt-5",
+  architect: "google/gemini-2.5-pro", // Use Gemini Pro for reasoning (GPT-5 was causing 400 errors)
   code: "google/gemini-2.5-pro",
   ui: "google/gemini-3-flash-preview",
-  fast: "google/gemini-2.5-flash-lite",
+  fast: "google/gemini-2.5-flash", // Use flash instead of flash-lite for better reliability
 };
 
 type TaskType = "reasoning" | "code" | "ui" | "general" | "fix_error" | "add_component" | "new_project";
@@ -745,9 +746,9 @@ function getModelConfig(taskType: TaskType): { model: string; systemPrompt: stri
     case "fix_error":
       return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.fix_error, modelLabel: "Gemini Pro (Fix)" };
     case "reasoning":
-      return { model: MODELS.architect, systemPrompt: SYSTEM_PROMPTS.reasoning, modelLabel: "GPT-5 (Architect)" };
+      return { model: MODELS.architect, systemPrompt: SYSTEM_PROMPTS.reasoning, modelLabel: "Gemini Pro (Reasoning)" };
     default:
-      return { model: MODELS.fast, systemPrompt: SYSTEM_PROMPTS.general, modelLabel: "Gemini Lite" };
+      return { model: MODELS.fast, systemPrompt: SYSTEM_PROMPTS.general, modelLabel: "Gemini Flash" };
   }
 }
 
@@ -958,26 +959,31 @@ async function callLovableAI(messages: Message[], model: string, systemPrompt: s
   });
 
   if (!response.ok) {
-    if (response.status === 429) throw new Error("Rate limit exceeded");
-    if (response.status === 402) throw new Error("Credits exhausted");
+    const errorText = await response.text();
+    console.error(`AI Gateway error (${response.status}):`, errorText);
+    if (response.status === 429) throw new Error("Rate limit exceeded. Please try again in a moment.");
+    if (response.status === 402) throw new Error("Credits exhausted. Please add more credits.");
+    if (response.status === 400) throw new Error(`Invalid request: ${errorText.slice(0, 200)}`);
     throw new Error(`AI Gateway error: ${response.status}`);
   }
 
   const data = await response.json();
   let generatedCode = data.choices?.[0]?.message?.content || "";
   
-  // Validate generated code
-  const validation = validateGeneratedCode(generatedCode);
-  
-  if (!validation.isValid) {
-    console.log("Code validation failed:", validation.errors);
-    // Auto-fix the code
-    generatedCode = await autoFixCode(generatedCode, validation.errors, apiKey);
+  // Only validate if we have code
+  if (generatedCode) {
+    const validation = validateGeneratedCode(generatedCode);
     
-    // Re-validate after fix
-    const revalidation = validateGeneratedCode(generatedCode);
-    if (!revalidation.isValid) {
-      console.log("Code still has issues after auto-fix:", revalidation.errors);
+    if (!validation.isValid && validation.errors.length > 0) {
+      console.log("Code validation issues:", validation.errors);
+      // Only auto-fix if there are significant errors
+      if (validation.errors.some(e => e.includes('Unbalanced') || e.includes('unclosed'))) {
+        try {
+          generatedCode = await autoFixCode(generatedCode, validation.errors, apiKey);
+        } catch (fixError) {
+          console.error("Auto-fix failed, returning original:", fixError);
+        }
+      }
     }
   }
   
@@ -1006,8 +1012,11 @@ async function callLovableAIStream(opts: {
   });
 
   if (!response.ok) {
-    if (response.status === 429) throw new Error("Rate limit exceeded");
-    if (response.status === 402) throw new Error("Credits exhausted");
+    const errorText = await response.text();
+    console.error(`AI Stream error (${response.status}):`, errorText);
+    if (response.status === 429) throw new Error("Rate limit exceeded. Please try again.");
+    if (response.status === 402) throw new Error("Credits exhausted.");
+    if (response.status === 400) throw new Error(`Invalid request: ${errorText.slice(0, 200)}`);
     throw new Error(`AI Gateway error: ${response.status}`);
   }
 
