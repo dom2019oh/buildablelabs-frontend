@@ -84,6 +84,9 @@ export default function ProjectWorkspace() {
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [currentVersionNumber, setCurrentVersionNumber] = useState(0);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [lastMessageContent, setLastMessageContent] = useState<string>('');
 
   // Available routes
   const availableRoutes = ['/', '/about', '/contact', '/dashboard', '/settings'];
@@ -107,6 +110,10 @@ export default function ProjectWorkspace() {
   }, []);
 
   const handleSendMessage = useCallback(async (content: string) => {
+    // Clear previous error state
+    setLastError(null);
+    setLastMessageContent(content);
+    
     // Send user message to store
     await sendMessage.mutateAsync({ content, role: 'user' });
     
@@ -224,11 +231,24 @@ export default function ProjectWorkspace() {
       // On error
       (error) => {
         setStreamingMessage('');
+        setLastError(error.message || 'An unexpected error occurred');
       },
       // Pass existing files for smart coding
       existingFiles
     );
   }, [messages, projectId, streamMessage, sendMessage, addFile, setPreviewHtml, handleRefreshPreview, toast, saveFiles, updateProject, createVersion, previewHtml, setSelectedFile, files]);
+
+  // Retry handler for failed messages
+  const handleRetry = useCallback(async () => {
+    if (!lastMessageContent) return;
+    setIsRetrying(true);
+    setLastError(null);
+    try {
+      await handleSendMessage(lastMessageContent);
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [lastMessageContent, handleSendMessage]);
 
   const handlePublish = useCallback(async () => {
     setIsPublishing(true);
@@ -566,6 +586,9 @@ export default function ProjectWorkspace() {
                 onCollapse={() => setIsChatCollapsed(true)}
                 projectName={project.name}
                 filesCreated={lastFilesCreated}
+                lastError={lastError}
+                onRetry={handleRetry}
+                isRetrying={isRetrying}
               />
             </motion.div>
           )}
