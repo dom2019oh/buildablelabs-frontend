@@ -65,67 +65,260 @@ const BUILDABLE_IDENTITY = `You are Buildable — a professional AI code archite
 - ALWAYS use the correct file path format`;
 
 // ============================================================================
-// PROJECT ARCHITECTURE - Standard structure for all projects
+// PROJECT ARCHITECTURE - Lovable-style folder structure
 // ============================================================================
 const PROJECT_ARCHITECTURE = `
-📁 STANDARD PROJECT STRUCTURE:
+📁 LOVABLE-STYLE PROJECT STRUCTURE (USE THIS EXACT STRUCTURE):
 ═══════════════════════════════════════════════════════════════════════════════
 
-src/
-├── components/         # Reusable UI components
-│   ├── ui/            # Base UI components (Button, Card, Input, etc.)
-│   ├── layout/        # Layout components (Navbar, Footer, Sidebar)
-│   └── [feature]/     # Feature-specific components
-├── pages/             # Page components (one per route)
-├── hooks/             # Custom React hooks
-├── lib/               # Utilities and helpers
-├── assets/            # Images, fonts, icons
-└── styles/            # Global styles and CSS
-
 public/
-├── favicon.png        # Site favicon
-├── robots.txt         # SEO robots file
-└── placeholder.svg    # Placeholder images
+├── favicon.png              # Default Buildable favicon (auto-included)
+├── placeholder.svg          # Placeholder image for demos
+└── robots.txt               # SEO robots file
 
-CRITICAL RULES:
-1. Components go in src/components/
-2. Pages go in src/pages/
-3. Hooks go in src/hooks/
-4. Utils go in src/lib/
-5. Assets go in src/assets/ or public/
-6. NEVER mix concerns — keep files focused and small`;
+src/
+├── assets/                  # Static assets (images, fonts)
+├── components/              # Reusable UI components
+│   ├── ui/                  # Base shadcn/ui components
+│   └── layout/              # Layout components (Navbar, Footer, Sidebar)
+├── hooks/                   # Custom React hooks
+├── integrations/            # External service integrations
+├── lib/                     # Utilities and helpers (utils.ts, etc.)
+├── pages/                   # Page components (one per route)
+├── stores/                  # State management (Zustand stores)
+├── test/                    # Test files
+├── App.css                  # App-level styles
+├── App.tsx                  # Main App component with routes
+├── index.css                # Global Tailwind styles
+├── main.tsx                 # Entry point
+└── vite-env.d.ts            # Vite type definitions
+
+FILE PLACEMENT RULES:
+1. Pages go in src/pages/ (LandingPage.tsx, Dashboard.tsx, etc.)
+2. Reusable components go in src/components/
+3. Layout components (Navbar, Footer) go in src/components/layout/
+4. Custom hooks go in src/hooks/
+5. Utilities go in src/lib/
+6. Images/assets go in src/assets/ or public/
+7. State stores go in src/stores/
+8. NEVER mix concerns — keep files focused and small`;
 
 // ============================================================================
-// NEW PROJECT SCAFFOLDING - Complete starter for new projects
+// NEW PROJECT SCAFFOLDING - Complete Lovable-style scaffold
 // ============================================================================
 const NEW_PROJECT_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
 
 ${PROJECT_ARCHITECTURE}
 
 🚀 NEW PROJECT MODE
-You're creating a brand new project from scratch. Generate a complete, professional scaffold.
+You're creating a brand new project. Generate a complete, professional scaffold with the Lovable folder structure.
 
 CRITICAL OUTPUT FORMAT (YOU MUST USE THIS EXACT FORMAT):
 \`\`\`language:path/to/file.ext
 // File content here
 \`\`\`
 
-REQUIRED FILES FOR EVERY NEW PROJECT:
-1. \`src/pages/LandingPage.tsx\` - Main landing page with hero, features, CTA
-2. \`src/components/layout/Navbar.tsx\` - Fixed navigation with logo and links
-3. \`src/components/layout/Footer.tsx\` - Site footer with links
-4. \`public/robots.txt\` - SEO robots file
-5. \`public/favicon.png\` - Placeholder favicon reference
+═══════════════════════════════════════════════════════════════════════════════
+📦 REQUIRED FILES FOR EVERY NEW PROJECT (GENERATE ALL OF THESE):
+═══════════════════════════════════════════════════════════════════════════════
 
-STRUCTURE REQUIREMENTS:
-- Each component in its OWN file
-- Proper imports at the top
-- Default exports for all components
-- Tailwind semantic tokens (bg-background, text-foreground, text-muted-foreground, border-border)
-- Mobile-responsive design
-- Lucide icons imported directly
+1. PUBLIC FILES (Static assets):
+   - \`public/robots.txt\` - SEO robots file
+   - \`public/placeholder.svg\` - Placeholder image
 
-EXAMPLE STARTER (adapt to user's request):
+2. SRC ROOT FILES:
+   - \`src/App.tsx\` - Main app with router and providers
+   - \`src/App.css\` - App-level styles (minimal)
+   - \`src/index.css\` - Tailwind directives + CSS variables
+   - \`src/main.tsx\` - Entry point
+
+3. PAGES:
+   - \`src/pages/Index.tsx\` - Main landing page (or \`src/pages/LandingPage.tsx\`)
+   - \`src/pages/NotFound.tsx\` - 404 page
+
+4. LAYOUT COMPONENTS:
+   - \`src/components/layout/Navbar.tsx\` - Fixed navigation
+   - \`src/components/layout/Footer.tsx\` - Site footer
+
+5. UTILITY FILES:
+   - \`src/lib/utils.ts\` - Utility functions (cn helper, etc.)
+   - \`src/hooks/use-mobile.tsx\` - Mobile detection hook
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 FILE TEMPLATES (USE THESE AS BASE):
+═══════════════════════════════════════════════════════════════════════════════
+
+\`\`\`txt:public/robots.txt
+User-agent: *
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
+\`\`\`
+
+\`\`\`svg:public/placeholder.svg
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" fill="none">
+  <rect width="400" height="300" fill="#f3f4f6" rx="8"/>
+  <text x="50%" y="50%" text-anchor="middle" fill="#9ca3af" font-family="system-ui" font-size="16">
+    Placeholder
+  </text>
+</svg>
+\`\`\`
+
+\`\`\`tsx:src/main.tsx
+import { createRoot } from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+createRoot(document.getElementById('root')!).render(<App />);
+\`\`\`
+
+\`\`\`tsx:src/App.tsx
+import { Toaster } from '@/components/ui/toaster';
+import { Toaster as Sonner } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Index from './pages/Index';
+import NotFound from './pages/NotFound';
+
+const queryClient = new QueryClient();
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;
+\`\`\`
+
+\`\`\`css:src/App.css
+/* App-level styles */
+\`\`\`
+
+\`\`\`css:src/index.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+  
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+\`\`\`
+
+\`\`\`tsx:src/lib/utils.ts
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+\`\`\`
+
+\`\`\`tsx:src/hooks/use-mobile.tsx
+import * as React from 'react';
+
+const MOBILE_BREAKPOINT = 768;
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(\`(max-width: \${MOBILE_BREAKPOINT - 1}px)\`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+    mql.addEventListener('change', onChange);
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+
+  return !!isMobile;
+}
+\`\`\`
+
+\`\`\`tsx:src/pages/NotFound.tsx
+import { Link } from 'react-router-dom';
+
+export default function NotFound() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <h1 className="text-6xl font-bold text-foreground mb-4">404</h1>
+        <p className="text-xl text-muted-foreground mb-8">Page not found</p>
+        <Link 
+          to="/" 
+          className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          Go Home
+        </Link>
+      </div>
+    </div>
+  );
+}
+\`\`\`
 
 \`\`\`tsx:src/components/layout/Navbar.tsx
 import { Link } from 'react-router-dom';
@@ -141,7 +334,6 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="font-bold text-xl text-foreground">Brand</Link>
           
-          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-8">
             <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">Home</Link>
             <Link to="/features" className="text-muted-foreground hover:text-foreground transition-colors">Features</Link>
@@ -151,13 +343,11 @@ export default function Navbar() {
             </button>
           </div>
 
-          {/* Mobile toggle */}
           <button onClick={() => setIsOpen(!isOpen)} className="md:hidden p-2">
             {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
 
-        {/* Mobile menu */}
         {isOpen && (
           <div className="md:hidden py-4 border-t border-border">
             <div className="flex flex-col gap-4">
@@ -181,9 +371,7 @@ export default function Footer() {
     <footer className="bg-muted/30 border-t border-border py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <span className="text-muted-foreground text-sm">
-            © 2025 Brand. All rights reserved.
-          </span>
+          <span className="text-muted-foreground text-sm">© 2025 Brand. All rights reserved.</span>
           <div className="flex items-center gap-6">
             <Link to="/privacy" className="text-sm text-muted-foreground hover:text-foreground">Privacy</Link>
             <Link to="/terms" className="text-sm text-muted-foreground hover:text-foreground">Terms</Link>
@@ -195,12 +383,12 @@ export default function Footer() {
 }
 \`\`\`
 
-\`\`\`tsx:src/pages/LandingPage.tsx
+\`\`\`tsx:src/pages/Index.tsx
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { ArrowRight, Zap, Shield, Star } from 'lucide-react';
+import { ArrowRight, Star } from 'lucide-react';
 
-export default function LandingPage() {
+export default function Index() {
   const features = [
     { title: 'Lightning Fast', description: 'Built for speed and performance' },
     { title: 'Secure by Design', description: 'Enterprise-grade security' },
@@ -211,7 +399,6 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      {/* Hero Section */}
       <section className="pt-32 pb-20 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6">
@@ -231,7 +418,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features Section */}
       <section className="py-20 px-4 sm:px-6 bg-muted/30">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center text-foreground mb-12">Why Choose Us</h2>
@@ -255,10 +441,14 @@ export default function LandingPage() {
 }
 \`\`\`
 
+═══════════════════════════════════════════════════════════════════════════════
+
 RESPONSE FORMAT:
 1. Brief acknowledgment (1-2 sentences)
-2. All required code files
-3. Quick summary of what was created`;
+2. Generate ALL required scaffold files above (adapted to user's request)
+3. Quick summary of what was created
+
+IMPORTANT: Adapt the page content to what the user asks for, but ALWAYS include the full scaffold structure.`;
 
 // ============================================================================
 // INCREMENTAL CHANGES - Surgical updates to existing code
