@@ -1,3 +1,7 @@
+// =============================================================================
+// AI Chat Edge Function with Tool/MCP Pipeline
+// =============================================================================
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -6,19 +10,78 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Lovable AI Gateway endpoint
+// Lovable AI Gateway
 const LOVABLE_AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-// Available models via Lovable AI Gateway
-// IMPORTANT: Use exact model names as per Lovable AI documentation
+// Model configuration for pipeline phases
 const MODELS = {
-  architect: "google/gemini-2.5-pro", // Use Gemini Pro for reasoning (GPT-5 was causing 400 errors)
-  code: "google/gemini-2.5-pro",
+  architect: "google/gemini-2.5-pro",
+  code: "google/gemini-2.5-pro", 
+  validate: "google/gemini-2.5-flash",
   ui: "google/gemini-3-flash-preview",
-  fast: "google/gemini-2.5-flash", // Use flash instead of flash-lite for better reliability
+  fast: "google/gemini-2.5-flash",
 };
 
-type TaskType = "reasoning" | "code" | "ui" | "general" | "fix_error" | "add_component" | "new_project";
+// =============================================================================
+// TOOL DEFINITIONS - MCP-style structured tools
+// =============================================================================
+
+const TOOL_DEFINITIONS = [
+  {
+    type: "function",
+    function: {
+      name: "write_file",
+      description: "Create or update a file in the project",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "File path (e.g., 'src/components/Button.tsx')" },
+          content: { type: "string", description: "Complete file content" },
+          reason: { type: "string", description: "Why this file is being created/modified" }
+        },
+        required: ["path", "content"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "think",
+      description: "Analyze the task before taking action",
+      parameters: {
+        type: "object",
+        properties: {
+          analysis: { type: "string", description: "Your reasoning about the task" },
+          plan: { type: "array", items: { type: "string" }, description: "Steps to accomplish the task" }
+        },
+        required: ["analysis", "plan"],
+        additionalProperties: false
+      }
+    }
+  },
+  {
+    type: "function", 
+    function: {
+      name: "complete",
+      description: "Signal task completion",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: { type: "string", description: "What was accomplished" },
+          filesCreated: { type: "array", items: { type: "string" } },
+          filesModified: { type: "array", items: { type: "string" } }
+        },
+        required: ["summary"],
+        additionalProperties: false
+      }
+    }
+  }
+];
+
+// =============================================================================
+// TYPES
+// =============================================================================
 
 interface Message {
   role: "user" | "assistant" | "system";
@@ -36,914 +99,303 @@ interface ChatRequest {
   conversationHistory: Message[];
   stream?: boolean;
   existingFiles?: ProjectFile[];
+  usePipeline?: boolean;
 }
 
-// ============================================================================
-// BUILDABLE CORE IDENTITY - Professional, Lovable-style AI Builder
-// ============================================================================
-const BUILDABLE_IDENTITY = `You are Buildable — a professional AI code architect that generates production-ready applications.
+type TaskType = "reasoning" | "code" | "ui" | "general" | "fix_error" | "add_component" | "new_project";
 
-🎯 YOUR CORE PRINCIPLES:
-- You build REAL software, not demos
-- Every project is structured like a professional codebase
-- You make incremental changes that NEVER break existing functionality
-- You work with surgical precision — minimal changes, maximum impact
-- You always explain what you're building and why
+// =============================================================================
+// SYSTEM PROMPTS
+// =============================================================================
 
-💻 YOUR TECHNICAL STANDARDS:
-- React + TypeScript + Tailwind CSS (exclusively)
-- Clean, maintainable, production-ready code
-- Proper separation of concerns (components, hooks, utils)
-- Semantic Tailwind tokens (bg-background, text-foreground, etc.)
-- Mobile-responsive by default
-- Accessibility-aware implementations
+const BUILDABLE_IDENTITY = `You are Buildable — a professional AI code architect.
 
-🔒 YOUR SAFETY RULES:
-- NEVER rewrite entire files when making small changes
-- NEVER remove working code unless specifically asked
-- ALWAYS preserve existing imports, styles, and logic
-- ALWAYS create new components in separate files
-- ALWAYS use the correct file path format`;
+CORE PRINCIPLES:
+- Build REAL software, not demos
+- Make surgical, minimal changes
+- Never break existing functionality
+- Use React + TypeScript + Tailwind
 
-// ============================================================================
-// PROJECT ARCHITECTURE - Lovable-style folder structure
-// ============================================================================
-const PROJECT_ARCHITECTURE = `
-📁 LOVABLE-STYLE PROJECT STRUCTURE (USE THIS EXACT STRUCTURE):
-═══════════════════════════════════════════════════════════════════════════════
-
-public/
-├── favicon.png              # Default Buildable favicon (auto-included)
-├── placeholder.svg          # Placeholder image for demos
-└── robots.txt               # SEO robots file
-
-src/
-├── assets/                  # Static assets (images, fonts)
-├── components/              # Reusable UI components
-│   ├── ui/                  # Base shadcn/ui components
-│   └── layout/              # Layout components (Navbar, Footer, Sidebar)
-├── hooks/                   # Custom React hooks
-├── integrations/            # External service integrations
-├── lib/                     # Utilities and helpers (utils.ts, etc.)
-├── pages/                   # Page components (one per route)
-├── stores/                  # State management (Zustand stores)
-├── test/                    # Test files
-├── App.css                  # App-level styles
-├── App.tsx                  # Main App component with routes
-├── index.css                # Global Tailwind styles
-├── main.tsx                 # Entry point
-└── vite-env.d.ts            # Vite type definitions
-
-FILE PLACEMENT RULES:
-1. Pages go in src/pages/ (LandingPage.tsx, Dashboard.tsx, etc.)
-2. Reusable components go in src/components/
-3. Layout components (Navbar, Footer) go in src/components/layout/
-4. Custom hooks go in src/hooks/
-5. Utilities go in src/lib/
-6. Images/assets go in src/assets/ or public/
-7. State stores go in src/stores/
-8. NEVER mix concerns — keep files focused and small`;
-
-// ============================================================================
-// NEW PROJECT SCAFFOLDING - Complete Lovable-style scaffold
-// ============================================================================
-const NEW_PROJECT_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-${PROJECT_ARCHITECTURE}
-
-🚀 NEW PROJECT MODE
-You're creating a brand new project. Generate a complete, professional scaffold.
-
-⚠️ CRITICAL CODE QUALITY RULES (FOLLOW EXACTLY):
-1. ALL JSX tags must be properly closed (self-closing or paired)
-2. ALL curly braces and parentheses must be balanced
-3. Use STATIC content for features/cards (no .map() patterns in initial scaffold)
-4. Use semantic Tailwind classes (bg-background, text-foreground, bg-primary)
-5. Include ALL imports at the top of each file
-6. Use emoji icons instead of lucide-react for simple icons
-7. Export using: export default function ComponentName()
-
-CRITICAL OUTPUT FORMAT:
+OUTPUT FORMAT:
 \`\`\`language:path/to/file.ext
-// File content here
+// Complete file content
 \`\`\`
 
-═══════════════════════════════════════════════════════════════════════════════
-📦 REQUIRED FILES (GENERATE ALL):
-═══════════════════════════════════════════════════════════════════════════════
+FILE STRUCTURE:
+- src/pages/ for page components
+- src/components/ for reusable components  
+- src/components/layout/ for Navbar, Footer, etc.
+- src/hooks/ for custom hooks
+- src/lib/ for utilities`;
 
+const ARCHITECT_PROMPT = `${BUILDABLE_IDENTITY}
+
+You are the ARCHITECT phase. Analyze the request and create a structured plan.
+
+OUTPUT (JSON):
+{
+  "understanding": "Brief summary of what user wants",
+  "plan": [{"step": 1, "action": "create", "path": "src/...", "description": "What this does"}],
+  "architecture": {"components": [], "dataFlow": "..."}
+}`;
+
+const CODE_PROMPT = `${BUILDABLE_IDENTITY}
+
+You are the CODE phase. Follow the architect's plan and generate code.
+
+Use write_file tool calls for each file:
+{"tool_calls": [{"function": {"name": "write_file", "arguments": {"path": "...", "content": "..."}}}]}
+
+Or use traditional format:
+\`\`\`tsx:src/components/Example.tsx
+// code here
+\`\`\``;
+
+const NEW_PROJECT_PROMPT = `${BUILDABLE_IDENTITY}
+
+GENERATE A COMPLETE PROJECT with these files:
 1. public/robots.txt
-2. public/placeholder.svg
-3. src/main.tsx
-4. src/App.tsx
-5. src/App.css
-6. src/index.css
-7. src/lib/utils.ts
-8. src/hooks/use-mobile.tsx
-9. src/pages/Index.tsx
-10. src/pages/NotFound.tsx
-11. src/components/layout/Navbar.tsx
-12. src/components/layout/Footer.tsx
-
-═══════════════════════════════════════════════════════════════════════════════
-📝 EXACT TEMPLATES (COPY AND ADAPT):
-═══════════════════════════════════════════════════════════════════════════════
-
-\`\`\`txt:public/robots.txt
-User-agent: *
-Allow: /
-\`\`\`
-
-\`\`\`svg:public/placeholder.svg
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" fill="none"><rect width="400" height="300" fill="#f3f4f6" rx="8"/><text x="200" y="150" text-anchor="middle" fill="#9ca3af" font-family="system-ui" font-size="16">Placeholder</text></svg>
-\`\`\`
-
-\`\`\`tsx:src/main.tsx
-import { createRoot } from 'react-dom/client';
-import App from './App';
-import './index.css';
-
-const container = document.getElementById('root');
-if (container) {
-  createRoot(container).render(<App />);
-}
-\`\`\`
-
-\`\`\`tsx:src/App.tsx
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import Index from './pages/Index';
-import NotFound from './pages/NotFound';
-
-const queryClient = new QueryClient();
-
-export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
-  );
-}
-\`\`\`
-
-\`\`\`css:src/App.css
-/* App styles */
-\`\`\`
-
-\`\`\`css:src/index.css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-  }
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
-}
-\`\`\`
-
-\`\`\`tsx:src/lib/utils.ts
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-\`\`\`
-
-\`\`\`tsx:src/hooks/use-mobile.tsx
-import { useState, useEffect } from 'react';
-
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
-
-  return isMobile;
-}
-\`\`\`
-
-\`\`\`tsx:src/pages/NotFound.tsx
-import { Link } from 'react-router-dom';
-
-export default function NotFound() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-6xl font-bold text-foreground mb-4">404</h1>
-        <p className="text-xl text-muted-foreground mb-8">Page not found</p>
-        <Link to="/" className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
-          Go Home
-        </Link>
-      </div>
-    </div>
-  );
-}
-\`\`\`
-
-\`\`\`tsx:src/components/layout/Navbar.tsx
-import { Link } from 'react-router-dom';
-import { useState } from 'react';
-
-export default function Navbar() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-16">
-          <Link to="/" className="font-bold text-xl text-foreground">Brand</Link>
-          <div className="hidden md:flex items-center gap-8">
-            <Link to="/" className="text-muted-foreground hover:text-foreground">Home</Link>
-            <Link to="/about" className="text-muted-foreground hover:text-foreground">About</Link>
-            <Link to="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link>
-          </div>
-          <button onClick={() => setIsOpen(!isOpen)} className="md:hidden p-2">
-            <span className="text-2xl">{isOpen ? '✕' : '☰'}</span>
-          </button>
-        </div>
-        {isOpen && (
-          <div className="md:hidden py-4 border-t border-border flex flex-col gap-4">
-            <Link to="/" className="text-muted-foreground hover:text-foreground">Home</Link>
-            <Link to="/about" className="text-muted-foreground hover:text-foreground">About</Link>
-            <Link to="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link>
-          </div>
-        )}
-      </div>
-    </nav>
-  );
-}
-\`\`\`
-
-\`\`\`tsx:src/components/layout/Footer.tsx
-import { Link } from 'react-router-dom';
-
-export default function Footer() {
-  return (
-    <footer className="bg-muted/30 border-t border-border py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <span className="text-muted-foreground text-sm">© 2025 Brand. All rights reserved.</span>
-          <div className="flex items-center gap-6">
-            <Link to="/privacy" className="text-sm text-muted-foreground hover:text-foreground">Privacy</Link>
-            <Link to="/terms" className="text-sm text-muted-foreground hover:text-foreground">Terms</Link>
-          </div>
-        </div>
-      </div>
-    </footer>
-  );
-}
-\`\`\`
-
-\`\`\`tsx:src/pages/Index.tsx
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
-
-export default function Index() {
-  return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-16">
-        <section className="py-20 px-4 sm:px-6">
-          <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground mb-6">
-              Welcome to Our Site
-            </h1>
-            <p className="text-lg sm:text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              A beautiful, professional website built with modern technologies.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:opacity-90">
-                Get Started
-              </button>
-              <button className="px-6 py-3 border border-border text-foreground rounded-lg hover:bg-muted">
-                Learn More
-              </button>
-            </div>
-          </div>
-        </section>
-        <section className="py-20 px-4 sm:px-6 bg-muted/30">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-3xl font-bold text-center text-foreground mb-12">Our Features</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="p-6 bg-card rounded-xl border border-border">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-2xl">⚡</span>
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Lightning Fast</h3>
-                <p className="text-muted-foreground">Built for speed and performance.</p>
-              </div>
-              <div className="p-6 bg-card rounded-xl border border-border">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-2xl">🔒</span>
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Secure</h3>
-                <p className="text-muted-foreground">Enterprise-grade security built in.</p>
-              </div>
-              <div className="p-6 bg-card rounded-xl border border-border">
-                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                  <span className="text-2xl">✨</span>
-                </div>
-                <h3 className="text-xl font-semibold text-foreground mb-2">Easy to Use</h3>
-                <p className="text-muted-foreground">Intuitive interface for everyone.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
-      <Footer />
-    </div>
-  );
-}
-\`\`\`
-
-═══════════════════════════════════════════════════════════════════════════════
-ADAPT the Index.tsx content to match the user's request (bakery, portfolio, etc.)
-Use STATIC content (no .map loops) and EMOJI icons for reliability.
-═══════════════════════════════════════════════════════════════════════════════`;
-
-// ============================================================================
-// INCREMENTAL CHANGES - Surgical updates to existing code
-// ============================================================================
-const ADD_COMPONENT_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-${PROJECT_ARCHITECTURE}
-
-🔧 INCREMENTAL UPDATE MODE
-You're adding or modifying components in an EXISTING project. Make SURGICAL changes.
-
-CRITICAL OUTPUT FORMAT:
-\`\`\`language:path/to/file.ext
-// Complete file content here
-\`\`\`
-
-🔒 PRESERVATION RULES (FOLLOW EXACTLY):
-
-1. **NEW COMPONENTS = NEW FILES**
-   When adding a navbar, footer, modal, etc:
-   - Create it as a NEW file in the correct directory
-   - Then update existing files MINIMALLY to import and use it
-
-2. **EXISTING FILES = MINIMAL CHANGES**
-   When updating an existing file:
-   - Show the COMPLETE file content
-   - Preserve ALL existing imports
-   - Preserve ALL existing code
-   - Only ADD new imports and components
-   - Mark new additions with: {/* NEW: description */}
-
-3. **NEVER DO THESE:**
-   ❌ Rewrite entire pages to add one component
-   ❌ Remove existing styling or functionality
-   ❌ Change the structure of working code
-   ❌ Rename existing files or components
-   ❌ Remove comments or documentation
-
-EXAMPLE - Adding a navbar to existing page:
-
-Step 1: Create NEW navbar file:
-\`\`\`tsx:src/components/layout/Navbar.tsx
-import { Menu } from 'lucide-react';
-
-export default function Navbar() {
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-b border-border">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <span className="font-bold text-xl">Brand</span>
-        <div className="hidden md:flex gap-6">
-          <a href="#" className="text-muted-foreground hover:text-foreground">Home</a>
-          <a href="#" className="text-muted-foreground hover:text-foreground">About</a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-\`\`\`
-
-Step 2: MINIMAL update to existing page:
-\`\`\`tsx:src/pages/LandingPage.tsx
-import { ArrowRight } from 'lucide-react'; // existing import
-import Navbar from '@/components/layout/Navbar'; // NEW: navbar import
-
-export default function LandingPage() {
-  // ... ALL EXISTING CODE PRESERVED EXACTLY ...
-  
-  return (
-    <div className="min-h-screen bg-background">
-      <Navbar /> {/* NEW: Added navbar */}
-      
-      {/* ALL EXISTING JSX PRESERVED BELOW */}
-      <section className="py-20">
-        {/* ... existing hero section unchanged ... */}
-      </section>
-    </div>
-  );
-}
-\`\`\`
-
-RESPONSE FORMAT:
-1. "I'll add this without touching your existing code ✨"
-2. New component file(s)
-3. Minimal updates to existing files
-4. "Changes made:" summary`;
-
-// ============================================================================
-// CODE GENERATION - Creating complete, polished files
-// ============================================================================
-const CODE_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-${PROJECT_ARCHITECTURE}
-
-🛠️ CODE GENERATION MODE
-You CREATE complete, production-ready files.
-
-CRITICAL OUTPUT FORMAT:
-\`\`\`language:path/to/file.ext
-// Code here
-\`\`\`
-
-CODE QUALITY STANDARDS:
-
-1. **FILE STRUCTURE**
-   \`\`\`tsx
-   // Imports at top (sorted: react, libraries, local)
-   import { useState } from 'react';
-   import { Star } from 'lucide-react';
-   import Button from '@/components/ui/Button';
-
-   // Types if needed
-   interface Props { ... }
-
-   // Component
-   export default function ComponentName() {
-     // Data arrays INSIDE the component
-     const items = [...];
-
-     return (
-       <div className="...">
-         {/* JSX here */}
-       </div>
-     );
-   }
-   \`\`\`
-
-2. **STYLING**
-   - Use Tailwind semantic tokens: bg-background, text-foreground, border-border
-   - Mobile-first: base styles, then sm:, md:, lg:
-   - Consistent spacing: p-4, gap-4, space-y-4
-
-3. **ICONS**
-   - Import from lucide-react
-   - Use directly: <Star className="w-5 h-5" />
-   - NEVER use dynamic icons from data arrays
-
-4. **ARRAYS/MAPS**
-   \`\`\`tsx
-   const features = [
-     { title: 'Fast', description: 'Lightning speed' },
-   ];
-
-   {features.map((feature, index) => (
-     <div key={index}>
-       <Star className="w-6 h-6 text-primary" />
-       <h3>{feature.title}</h3>
-       <p>{feature.description}</p>
-     </div>
-   ))}
-   \`\`\`
-
-RESPONSE FORMAT:
-1. Brief acknowledgment
-2. Complete file(s) with proper paths
-3. Short summary of what was created`;
-
-// ============================================================================
-// UI MODE - Design and styling focused
-// ============================================================================
-const UI_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-🎨 UI DESIGN MODE
-You CREATE beautiful, polished user interfaces.
-
-CRITICAL OUTPUT FORMAT:
-\`\`\`language:path/to/file.ext
-code here
-\`\`\`
-
-DESIGN PRINCIPLES:
-- Visual hierarchy — guide the eye naturally
-- Generous whitespace — breathing room matters
-- Consistent spacing — use Tailwind's scale (4, 6, 8, 12, 16, 20)
-- Smooth transitions — hover:, focus:, transition-colors
-- Semantic colors — primary, foreground, muted-foreground, border
-
-PRESERVE existing functionality when adding visual updates.`;
-
-// ============================================================================
-// FIX ERROR MODE - Debugging and repairs
-// ============================================================================
-const FIX_ERROR_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-🔧 ERROR FIX MODE
-You diagnose and fix code issues with precision.
-
-CRITICAL OUTPUT FORMAT:
-\`\`\`language:path/to/file.ext
-// Complete fixed file
-\`\`\`
-
-DEBUGGING APPROACH:
-1. Identify the root cause (not symptoms)
+2. src/main.tsx
+3. src/App.tsx
+4. src/index.css (with Tailwind + CSS variables)
+5. src/lib/utils.ts
+6. src/pages/Index.tsx
+7. src/pages/NotFound.tsx
+8. src/components/layout/Navbar.tsx
+9. src/components/layout/Footer.tsx
+
+Use Tailwind semantic tokens: bg-background, text-foreground, etc.`;
+
+const FIX_ERROR_PROMPT = `${BUILDABLE_IDENTITY}
+
+DEBUGGING MODE:
+1. Identify the root cause
 2. Explain what went wrong
 3. Provide the COMPLETE fixed file
-4. Add safeguards to prevent recurrence
+4. Add safeguards to prevent recurrence`;
 
-COMMON FIXES:
-- Add null checks: array?.map()
-- Add fallback values: value || 'default'
-- Fix import paths: @/components/...
-- Ensure exports match imports
-- Wrap async code in try-catch
-
-RESPONSE FORMAT:
-1. "Found the issue! [brief explanation]"
-2. Complete fixed file(s)
-3. What was fixed and why`;
-
-// ============================================================================
-// REASONING MODE - Planning and architecture
-// ============================================================================
-const REASONING_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-🧠 ARCHITECT MODE
-You plan, explain, and guide technical decisions.
-
-When asked to BUILD:
-1. Brief acknowledgment
-2. Create complete files with proper paths
-3. Suggest next steps
-
-When asked QUESTIONS:
-- Explain clearly and accessibly
-- Relate to their specific project
-- Offer to implement if appropriate`;
-
-// ============================================================================
-// GENERAL MODE - Friendly assistance
-// ============================================================================
-const GENERAL_SYSTEM_PROMPT = `${BUILDABLE_IDENTITY}
-
-💬 CHAT MODE
-You're a helpful, knowledgeable assistant.
-
-For code requests, always use:
-\`\`\`language:path/to/file.ext
-code here
-\`\`\`
-
-Be encouraging, helpful, and always ready to build!`;
-
-// ============================================================================
-// SYSTEM PROMPT LOOKUP
-// ============================================================================
-const SYSTEM_PROMPTS: Record<TaskType, string> = {
-  new_project: NEW_PROJECT_SYSTEM_PROMPT,
-  add_component: ADD_COMPONENT_SYSTEM_PROMPT,
-  code: CODE_SYSTEM_PROMPT,
-  ui: UI_SYSTEM_PROMPT,
-  fix_error: FIX_ERROR_SYSTEM_PROMPT,
-  reasoning: REASONING_SYSTEM_PROMPT,
-  general: GENERAL_SYSTEM_PROMPT,
-};
-
-// ============================================================================
+// =============================================================================
 // TASK CLASSIFICATION
-// ============================================================================
-async function classifyTask(message: string, existingFiles: ProjectFile[], apiKey: string): Promise<TaskType> {
-  const lowerMessage = message.toLowerCase();
-  const hasExistingFiles = existingFiles.length > 0;
+// =============================================================================
+
+function classifyTask(message: string, hasExistingFiles: boolean): TaskType {
+  const lower = message.toLowerCase();
   
-  // Detect error/fix requests
-  if (lowerMessage.includes('error') || lowerMessage.includes('fix') || lowerMessage.includes('broken') || 
-      lowerMessage.includes('not working') || lowerMessage.includes('bug') || lowerMessage.includes("doesn't work") ||
-      lowerMessage.includes('issue') || lowerMessage.includes('problem')) {
+  if (lower.includes('error') || lower.includes('fix') || lower.includes('broken') || lower.includes('bug')) {
     return "fix_error";
   }
   
-  // Detect if this is a completely new project (no existing files or explicit new request)
-  const isNewProject = !hasExistingFiles || 
-    (lowerMessage.includes('create') || lowerMessage.includes('build') || lowerMessage.includes('make')) &&
-    (lowerMessage.includes('website') || lowerMessage.includes('app') || lowerMessage.includes('landing') ||
-     lowerMessage.includes('page') || lowerMessage.includes('project') || lowerMessage.includes('site'));
-  
-  // Detect component additions to existing project
-  const isAddingComponent = hasExistingFiles && (
-    (lowerMessage.includes('add') || lowerMessage.includes('create') || lowerMessage.includes('include')) &&
-    (lowerMessage.includes('navbar') || lowerMessage.includes('nav') || lowerMessage.includes('footer') || 
-     lowerMessage.includes('header') || lowerMessage.includes('sidebar') || lowerMessage.includes('menu') ||
-     lowerMessage.includes('section') || lowerMessage.includes('component') || lowerMessage.includes('button') ||
-     lowerMessage.includes('form') || lowerMessage.includes('modal') || lowerMessage.includes('card'))
-  );
-  
-  if (isAddingComponent) {
-    return "add_component";
-  }
-  
-  if (isNewProject && !hasExistingFiles) {
+  if (!hasExistingFiles && (lower.includes('create') || lower.includes('build') || lower.includes('make'))) {
     return "new_project";
   }
   
-  // Use AI for ambiguous cases
-  const classificationPrompt = `Classify this request into exactly one category:
-- "new_project": Creating a brand new website/app/landing page from scratch
-- "add_component": Adding a new element (navbar, section, button) to an EXISTING project
-- "code": General coding task or feature implementation
-- "ui": Styling or design changes only
-- "fix_error": Fixing bugs or errors
-- "reasoning": Questions, planning, explanations
-- "general": Simple chat or greetings
-
-CONTEXT: User ${hasExistingFiles ? 'HAS existing files' : 'has NO existing files'}
-REQUEST: "${message.slice(0, 300)}"
-
-Respond with ONLY the category name:`;
-
-  try {
-    const response = await fetch(LOVABLE_AI_GATEWAY, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODELS.fast,
-        messages: [{ role: "user", content: classificationPrompt }],
-        max_tokens: 20,
-        temperature: 0,
-      }),
-    });
-
-    if (!response.ok) {
-      return hasExistingFiles ? "add_component" : "new_project";
-    }
-
-    const data = await response.json();
-    const classification = data.choices?.[0]?.message?.content?.toLowerCase().trim().replace(/[^a-z_]/g, '');
-    
-    const validTypes: TaskType[] = ["new_project", "add_component", "code", "ui", "fix_error", "reasoning", "general"];
-    if (validTypes.includes(classification as TaskType)) {
-      return classification as TaskType;
-    }
-    
-    return hasExistingFiles ? "add_component" : "new_project";
-  } catch {
-    return hasExistingFiles ? "add_component" : "new_project";
+  if (hasExistingFiles && (lower.includes('add') || lower.includes('create'))) {
+    return "add_component";
   }
+  
+  return "code";
 }
 
-// ============================================================================
-// MODEL CONFIGURATION
-// ============================================================================
-function getModelConfig(taskType: TaskType): { model: string; systemPrompt: string; modelLabel: string } {
+function getSystemPrompt(taskType: TaskType): string {
   switch (taskType) {
-    case "new_project":
-      return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.new_project, modelLabel: "Gemini Pro (Scaffold)" };
-    case "add_component":
-      return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.add_component, modelLabel: "Gemini Pro (Incremental)" };
-    case "code":
-      return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.code, modelLabel: "Gemini Pro (Code)" };
-    case "ui":
-      return { model: MODELS.ui, systemPrompt: SYSTEM_PROMPTS.ui, modelLabel: "Gemini Flash (UI)" };
-    case "fix_error":
-      return { model: MODELS.code, systemPrompt: SYSTEM_PROMPTS.fix_error, modelLabel: "Gemini Pro (Fix)" };
-    case "reasoning":
-      return { model: MODELS.architect, systemPrompt: SYSTEM_PROMPTS.reasoning, modelLabel: "Gemini Pro (Reasoning)" };
-    default:
-      return { model: MODELS.fast, systemPrompt: SYSTEM_PROMPTS.general, modelLabel: "Gemini Flash" };
+    case "new_project": return NEW_PROJECT_PROMPT;
+    case "fix_error": return FIX_ERROR_PROMPT;
+    case "add_component": return CODE_PROMPT;
+    default: return BUILDABLE_IDENTITY;
   }
 }
 
-// ============================================================================
-// CREDIT COSTS
-// ============================================================================
-function getCreditCost(taskType: TaskType): number {
+function getModel(taskType: TaskType): string {
   switch (taskType) {
-    case "new_project": return 0.25;
-    case "add_component": return 0.15;
-    case "code": return 0.15;
-    case "ui": return 0.10;
-    case "fix_error": return 0.15;
-    case "reasoning": return 0.20;
-    default: return 0.10;
+    case "new_project": return MODELS.code;
+    case "fix_error": return MODELS.code;
+    case "ui": return MODELS.ui;
+    default: return MODELS.code;
   }
 }
 
-// ============================================================================
-// PROJECT CONTEXT BUILDER
-// ============================================================================
-function buildProjectContext(files: ProjectFile[]): string {
-  if (!files || files.length === 0) return "";
-  
-  // Sort files by relevance (components and pages first)
-  const sortedFiles = [...files].sort((a, b) => {
-    const priority = (path: string) => {
-      if (path.includes('/pages/')) return 1;
-      if (path.includes('/components/')) return 2;
-      if (path.includes('/hooks/')) return 3;
-      return 4;
-    };
-    return priority(a.path) - priority(b.path);
-  });
-  
-  let context = `
+// =============================================================================
+// CODE VALIDATION
+// =============================================================================
 
-════════════════════════════════════════════════════════════════════════════════
-📁 EXISTING PROJECT FILES (YOU MUST PRESERVE THESE)
-════════════════════════════════════════════════════════════════════════════════
-
-`;
+function validateCode(code: string): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
   
-  for (const file of sortedFiles.slice(0, 8)) {
-    context += `📄 ${file.path}\n`;
-    context += "```\n";
-    context += file.content.slice(0, 2500);
-    if (file.content.length > 2500) {
-      context += "\n// ... (file truncated for context)";
-    }
-    context += "\n```\n\n";
+  const openBraces = (code.match(/\{/g) || []).length;
+  const closeBraces = (code.match(/\}/g) || []).length;
+  if (openBraces !== closeBraces) {
+    errors.push(`Unbalanced braces: ${openBraces} open, ${closeBraces} close`);
   }
   
-  context += `════════════════════════════════════════════════════════════════════════════════
-⚠️ CRITICAL: When modifying these files:
-   - PRESERVE all existing imports, components, and styling
-   - Only ADD new imports and components
-   - Mark new additions with {/* NEW: ... */}
-   - Show COMPLETE file contents in your response
-════════════════════════════════════════════════════════════════════════════════
-`;
+  const openParens = (code.match(/\(/g) || []).length;
+  const closeParens = (code.match(/\)/g) || []).length;
+  if (openParens !== closeParens) {
+    errors.push(`Unbalanced parentheses`);
+  }
   
+  return { isValid: errors.length === 0, errors };
+}
+
+// =============================================================================
+// FILE CONTEXT BUILDER
+// =============================================================================
+
+function buildFileContext(files: ProjectFile[]): string {
+  if (!files.length) return "";
+  
+  let context = "\n\nEXISTING FILES:\n";
+  for (const file of files.slice(0, 5)) {
+    context += `\n📄 ${file.path}:\n\`\`\`\n${file.content.slice(0, 1500)}\n\`\`\`\n`;
+  }
   return context;
 }
 
-// ============================================================================
-// CODE VALIDATION & AUTO-FIX
-// ============================================================================
-interface ValidationResult {
-  isValid: boolean;
-  errors: string[];
-  fixedCode?: string;
+// =============================================================================
+// PIPELINE EXECUTION
+// =============================================================================
+
+interface PipelinePhase {
+  name: string;
+  model: string;
+  duration: number;
 }
 
-// Validate generated code for common issues
-function validateGeneratedCode(response: string): ValidationResult {
-  const errors: string[] = [];
-  
-  // Extract code blocks
-  const codeBlockRegex = /```(\w+)?:?([^\n]*)\n([\s\S]*?)```/g;
-  let match;
-  
-  while ((match = codeBlockRegex.exec(response)) !== null) {
-    const language = match[1] || '';
-    const content = match[3];
-    
-    // Skip non-code blocks
-    if (!['tsx', 'ts', 'jsx', 'js', 'css'].includes(language)) continue;
-    
-    // Check for common JSX/TSX errors
-    if (language === 'tsx' || language === 'jsx') {
-      // Check for unclosed tags
-      const openTags = (content.match(/<(\w+)[^>]*(?<!\/\s*)>/g) || []).length;
-      const closeTags = (content.match(/<\/\w+>/g) || []).length;
-      const selfClosing = (content.match(/<\w+[^>]*\/>/g) || []).length;
-      
-      if (Math.abs(openTags - closeTags - selfClosing) > 2) {
-        errors.push('Possible unclosed JSX tags detected');
-      }
-      
-      // Check for missing imports
-      if (content.includes('className=') && !content.includes("import") && !content.includes("export default")) {
-        // This is likely a component file
-      }
-      
-      // Check for syntax errors in JSX expressions
-      const jsxExpressions = content.match(/\{[^}]*$/gm);
-      if (jsxExpressions) {
-        errors.push('Unclosed JSX expression detected');
-      }
-      
-      // Check for return statement in components
-      if (content.includes('export default function') || content.includes('const ') && content.includes('= () =>')) {
-        if (!content.includes('return') && !content.includes('=>')) {
-          errors.push('Component may be missing return statement');
-        }
-      }
-    }
-    
-    // Check for unbalanced brackets
-    const openBrackets = (content.match(/\{/g) || []).length;
-    const closeBrackets = (content.match(/\}/g) || []).length;
-    if (openBrackets !== closeBrackets) {
-      errors.push(`Unbalanced curly braces: ${openBrackets} open, ${closeBrackets} close`);
-    }
-    
-    const openParens = (content.match(/\(/g) || []).length;
-    const closeParens = (content.match(/\)/g) || []).length;
-    if (openParens !== closeParens) {
-      errors.push(`Unbalanced parentheses: ${openParens} open, ${closeParens} close`);
-    }
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors,
-  };
-}
-
-// Auto-fix common code issues using AI review
-async function autoFixCode(
-  originalResponse: string,
-  errors: string[],
+async function executePipeline(
+  message: string,
+  history: Message[],
+  existingFiles: ProjectFile[],
   apiKey: string
-): Promise<string> {
-  const fixPrompt = `You are a code reviewer. The following code has these issues:
-${errors.map(e => `- ${e}`).join('\n')}
+): Promise<{ response: string; phases: PipelinePhase[] }> {
+  const phases: PipelinePhase[] = [];
+  const startTime = Date.now();
 
-Original code:
-${originalResponse}
+  // Phase 1: Architect (Quick analysis)
+  console.log("🏗️ Phase 1: Architect");
+  const architectStart = Date.now();
+  
+  const architectResp = await fetch(LOVABLE_AI_GATEWAY, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODELS.architect,
+      messages: [
+        { role: "system", content: ARCHITECT_PROMPT + buildFileContext(existingFiles) },
+        ...history.slice(-5),
+        { role: "user", content: message }
+      ],
+      max_tokens: 2000,
+      temperature: 0.3,
+    }),
+  });
 
-Please fix ALL the issues and return the COMPLETE corrected code.
-Keep the same format with \`\`\`language:path/to/file.ext
-Ensure all JSX tags are properly closed, all brackets are balanced, and all imports are correct.
-Return ONLY the fixed code, no explanations.`;
-
-  try {
-    const response = await fetch(LOVABLE_AI_GATEWAY, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODELS.code,
-        messages: [{ role: "user", content: fixPrompt }],
-        max_tokens: 12000,
-        temperature: 0.3, // Lower temperature for more deterministic fixes
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("Auto-fix failed, returning original");
-      return originalResponse;
-    }
-
-    const data = await response.json();
-    const fixedCode = data.choices?.[0]?.message?.content;
-    
-    if (fixedCode && fixedCode.includes('```')) {
-      console.log("Auto-fix applied successfully");
-      return fixedCode;
-    }
-    
-    return originalResponse;
-  } catch (error) {
-    console.error("Auto-fix error:", error);
-    return originalResponse;
+  if (!architectResp.ok) {
+    throw new Error(`Architect phase failed: ${await architectResp.text()}`);
   }
+
+  const architectData = await architectResp.json();
+  const plan = architectData.choices?.[0]?.message?.content || "";
+  
+  phases.push({
+    name: "architect",
+    model: MODELS.architect,
+    duration: Date.now() - architectStart
+  });
+
+  // Phase 2: Code Generation
+  console.log("💻 Phase 2: Code");
+  const codeStart = Date.now();
+
+  const codeResp = await fetch(LOVABLE_AI_GATEWAY, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODELS.code,
+      messages: [
+        { role: "system", content: CODE_PROMPT + buildFileContext(existingFiles) },
+        ...history.slice(-5),
+        { role: "user", content: message },
+        { role: "assistant", content: `PLAN:\n${plan}` },
+        { role: "user", content: "Now generate the code following this plan." }
+      ],
+      max_tokens: 12000,
+      temperature: 0.5,
+      tools: TOOL_DEFINITIONS,
+      tool_choice: "auto"
+    }),
+  });
+
+  if (!codeResp.ok) {
+    throw new Error(`Code phase failed: ${await codeResp.text()}`);
+  }
+
+  const codeData = await codeResp.json();
+  let codeResponse = codeData.choices?.[0]?.message?.content || "";
+  
+  // Extract file operations from tool calls
+  const toolCalls = codeData.choices?.[0]?.message?.tool_calls || [];
+  if (toolCalls.length > 0) {
+    for (const call of toolCalls) {
+      if (call.function?.name === "write_file") {
+        try {
+          const args = typeof call.function.arguments === "string"
+            ? JSON.parse(call.function.arguments)
+            : call.function.arguments;
+          
+          const ext = args.path.split('.').pop() || 'txt';
+          codeResponse += `\n\n\`\`\`${ext}:${args.path}\n${args.content}\n\`\`\``;
+        } catch {}
+      }
+    }
+  }
+
+  phases.push({
+    name: "code",
+    model: MODELS.code,
+    duration: Date.now() - codeStart
+  });
+
+  // Phase 3: Validate
+  console.log("✅ Phase 3: Validate");
+  const validateStart = Date.now();
+  
+  const codeBlocks = codeResponse.match(/```[\s\S]*?```/g) || [];
+  let hasErrors = false;
+  
+  for (const block of codeBlocks) {
+    const validation = validateCode(block);
+    if (!validation.isValid) {
+      hasErrors = true;
+      console.log("Validation errors:", validation.errors);
+    }
+  }
+
+  phases.push({
+    name: "validate",
+    model: MODELS.validate,
+    duration: Date.now() - validateStart
+  });
+
+  console.log(`✅ Pipeline complete in ${Date.now() - startTime}ms`);
+  
+  return { response: codeResponse, phases };
 }
 
-// ============================================================================
-// AI CALL FUNCTIONS
-// ============================================================================
-async function callLovableAI(messages: Message[], model: string, systemPrompt: string, apiKey: string): Promise<string> {
+// =============================================================================
+// STREAMING AI CALL
+// =============================================================================
+
+async function streamAI(
+  messages: Message[],
+  model: string,
+  systemPrompt: string,
+  apiKey: string
+): Promise<Response> {
   const response = await fetch(LOVABLE_AI_GATEWAY, {
     method: "POST",
     headers: {
@@ -953,58 +405,6 @@ async function callLovableAI(messages: Message[], model: string, systemPrompt: s
     body: JSON.stringify({
       model,
       messages: [{ role: "system", content: systemPrompt }, ...messages],
-      max_tokens: 12000,
-      temperature: 0.7,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`AI Gateway error (${response.status}):`, errorText);
-    if (response.status === 429) throw new Error("Rate limit exceeded. Please try again in a moment.");
-    if (response.status === 402) throw new Error("Credits exhausted. Please add more credits.");
-    if (response.status === 400) throw new Error(`Invalid request: ${errorText.slice(0, 200)}`);
-    throw new Error(`AI Gateway error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  let generatedCode = data.choices?.[0]?.message?.content || "";
-  
-  // Only validate if we have code
-  if (generatedCode) {
-    const validation = validateGeneratedCode(generatedCode);
-    
-    if (!validation.isValid && validation.errors.length > 0) {
-      console.log("Code validation issues:", validation.errors);
-      // Only auto-fix if there are significant errors
-      if (validation.errors.some(e => e.includes('Unbalanced') || e.includes('unclosed'))) {
-        try {
-          generatedCode = await autoFixCode(generatedCode, validation.errors, apiKey);
-        } catch (fixError) {
-          console.error("Auto-fix failed, returning original:", fixError);
-        }
-      }
-    }
-  }
-  
-  return generatedCode;
-}
-
-async function callLovableAIStream(opts: {
-  messages: Message[];
-  model: string;
-  systemPrompt: string;
-  apiKey: string;
-}): Promise<Response> {
-  const response = await fetch(LOVABLE_AI_GATEWAY, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      messages: [{ role: "system", content: opts.systemPrompt }, ...opts.messages],
       stream: true,
       max_tokens: 12000,
       temperature: 0.7,
@@ -1012,21 +412,19 @@ async function callLovableAIStream(opts: {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`AI Stream error (${response.status}):`, errorText);
-    if (response.status === 429) throw new Error("Rate limit exceeded. Please try again.");
-    if (response.status === 402) throw new Error("Credits exhausted.");
-    if (response.status === 400) throw new Error(`Invalid request: ${errorText.slice(0, 200)}`);
+    const error = await response.text();
+    if (response.status === 429) throw new Error("Rate limit exceeded");
+    if (response.status === 402) throw new Error("Credits exhausted");
     throw new Error(`AI Gateway error: ${response.status}`);
   }
 
-  if (!response.body) throw new Error("No response body");
   return response;
 }
 
-// ============================================================================
+// =============================================================================
 // MAIN HANDLER
-// ============================================================================
+// =============================================================================
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1035,8 +433,8 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY not configured");
+    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing authorization");
@@ -1049,7 +447,7 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) throw new Error("Unauthorized");
 
-    // Check rate limit
+    // Rate limit check
     const { data: rateLimitData } = await supabase.rpc("check_ai_rate_limit", { p_user_id: user.id });
     if (rateLimitData?.[0] && !rateLimitData[0].allowed) {
       return new Response(
@@ -1058,84 +456,61 @@ serve(async (req) => {
       );
     }
 
-    // Check user has credits
-    const { data: hasCredits } = await supabase.rpc("user_has_credits", { 
-      p_user_id: user.id, 
-      p_amount: 0.10
-    });
-    
+    // Credits check
+    const { data: hasCredits } = await supabase.rpc("user_has_credits", { p_user_id: user.id, p_amount: 0.10 });
     if (hasCredits === false) {
       return new Response(
-        JSON.stringify({ 
-          error: "Insufficient credits", 
-          message: "You've run out of credits! Upgrade your plan or wait for your daily bonus." 
-        }),
+        JSON.stringify({ error: "Insufficient credits" }),
         { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const { projectId, message, conversationHistory, stream, existingFiles = [] } = await req.json() as ChatRequest;
+    const { projectId, message, conversationHistory, stream, existingFiles = [], usePipeline = false } = await req.json() as ChatRequest;
     if (!projectId || !message) throw new Error("Missing projectId or message");
 
-    const { data: project } = await supabase
-      .from("projects")
-      .select("id")
-      .eq("id", projectId)
-      .eq("user_id", user.id)
-      .single();
+    // Verify project ownership
+    const { data: project } = await supabase.from("projects").select("id").eq("id", projectId).eq("user_id", user.id).single();
     if (!project) throw new Error("Project not found");
 
-    const sanitizedMessage = message.slice(0, 10000).trim();
-    if (!sanitizedMessage) throw new Error("Empty message");
+    const taskType = classifyTask(message, existingFiles.length > 0);
+    const model = getModel(taskType);
+    const systemPrompt = getSystemPrompt(taskType) + buildFileContext(existingFiles);
 
-    // Classify task
-    const taskType = await classifyTask(sanitizedMessage, existingFiles, lovableApiKey);
-    const creditCost = getCreditCost(taskType);
-    console.log(`Task: ${taskType}, Credits: ${creditCost}, Files: ${existingFiles.length}`);
-
-    const { model, systemPrompt, modelLabel } = getModelConfig(taskType);
-    console.log(`Model: ${modelLabel}`);
-
-    // Build context for incremental updates
-    const projectContext = (taskType === "add_component" || taskType === "fix_error") 
-      ? buildProjectContext(existingFiles)
-      : "";
-    const enhancedSystemPrompt = systemPrompt + projectContext;
-
-    const messages: Message[] = [
-      ...conversationHistory.slice(-10),
-      { role: "user", content: sanitizedMessage },
-    ];
+    console.log(`Task: ${taskType}, Pipeline: ${usePipeline}, Files: ${existingFiles.length}`);
 
     // Deduct credits
-    const { data: deductResult } = await supabase.rpc("deduct_credits", {
+    await supabase.rpc("deduct_credits", {
       p_user_id: user.id,
       p_action_type: "ai_chat",
       p_description: `AI: ${taskType}`,
-      p_metadata: { taskType, model: modelLabel, projectId, filesCount: existingFiles.length }
+      p_metadata: { taskType, projectId }
     });
-
-    const remainingCredits = deductResult?.[0]?.remaining_credits ?? null;
 
     const metadata = {
       type: "metadata",
       taskType,
-      modelUsed: modelLabel,
-      model,
+      modelUsed: model,
       remaining: rateLimitData?.[0]?.remaining ?? null,
-      creditsUsed: creditCost,
-      remainingCredits,
-      smartMode: existingFiles.length > 0,
-      isNewProject: taskType === "new_project",
+      pipeline: usePipeline,
     };
 
+    // Use pipeline for new projects or when requested
+    if (usePipeline || taskType === "new_project") {
+      const { response, phases } = await executePipeline(message, conversationHistory, existingFiles, apiKey);
+      
+      return new Response(
+        JSON.stringify({
+          response,
+          metadata: { ...metadata, phases, duration: Date.now() - startTime }
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Standard streaming for other requests
     if (stream) {
-      const gatewayResp = await callLovableAIStream({
-        messages,
-        model,
-        systemPrompt: enhancedSystemPrompt,
-        apiKey: lovableApiKey,
-      });
+      const messages: Message[] = [...conversationHistory.slice(-10), { role: "user", content: message }];
+      const gatewayResp = await streamAI(messages, model, systemPrompt, apiKey);
 
       const encoder = new TextEncoder();
       const ts = new TransformStream<Uint8Array, Uint8Array>({
@@ -1147,32 +522,23 @@ serve(async (req) => {
       gatewayResp.body!.pipeTo(ts.writable).catch(console.error);
 
       return new Response(ts.readable, {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
       });
     }
 
-    const responseText = await callLovableAI(messages, model, enhancedSystemPrompt, lovableApiKey);
-    const duration = Math.floor((Date.now() - startTime) / 1000);
+    // Non-streaming
+    const messages: Message[] = [...conversationHistory.slice(-10), { role: "user", content: message }];
+    const response = await fetch(LOVABLE_AI_GATEWAY, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages: [{ role: "system", content: systemPrompt }, ...messages], max_tokens: 12000, temperature: 0.7 }),
+    });
+
+    if (!response.ok) throw new Error(`AI error: ${response.status}`);
+    const data = await response.json();
 
     return new Response(
-      JSON.stringify({
-        response: responseText,
-        metadata: { 
-          taskType, 
-          modelUsed: modelLabel, 
-          model, 
-          remaining: rateLimitData?.[0]?.remaining ?? null,
-          creditsUsed: creditCost,
-          remainingCredits,
-          duration,
-          smartMode: existingFiles.length > 0,
-          isNewProject: taskType === "new_project",
-        },
-      }),
+      JSON.stringify({ response: data.choices?.[0]?.message?.content || "", metadata }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
