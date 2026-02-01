@@ -1,0 +1,45 @@
+{
+  "name": "buildable-backend",
+  "version": "1.0.0",
+  "description": "AI Brain and Filesystem Authority for Buildable",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "start": "bun run dist/index.js",
+    "test": "bun test",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "db:push": "supabase db push",
+    "db:generate": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/types/database.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.91.1",
+    "hono": "^4.6.0",
+    "bullmq": "^5.13.0",
+    "ioredis": "^5.4.1",
+    "openai": "^4.70.0",
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@google/generative-ai": "^0.21.0",
+    "zod": "^3.25.0",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "nanoid": "^5.0.8",
+    "dotenv": "^16.4.5",
+    "execa": "^9.5.1",
+    "tree-kill": "^1.2.2",
+    "get-port": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "eslint": "^9.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "bun-types": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

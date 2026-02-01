@@ -3,10 +3,13 @@
 // =============================================================================
 // This is the primary interface between the read-only frontend and the backend.
 // All AI operations, file reading, and workspace state are managed through this hook.
+// Includes Supabase Realtime for instant updates during generation.
 
-import { useState, useCallback, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // =============================================================================
 // TYPES
@@ -37,7 +40,9 @@ export interface GenerationSession {
   id: string;
   prompt: string;
   status: "pending" | "planning" | "scaffolding" | "generating" | "validating" | "completed" | "failed";
+  files_planned: number;
   files_generated: number;
+  error_message: string | null;
   created_at: string;
   completed_at: string | null;
 }
@@ -47,6 +52,7 @@ export interface FileOperation {
   operation: "create" | "update" | "delete" | "rename" | "move";
   file_path: string;
   ai_model: string | null;
+  ai_reasoning: string | null;
   applied: boolean;
   created_at: string;
 }
@@ -87,7 +93,12 @@ async function workspaceAPI(
 export function useWorkspace(projectId: string | undefined) {
   const { session } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Real-time state
   const [generationStatus, setGenerationStatus] = useState<string | null>(null);
+  const [liveSession, setLiveSession] = useState<GenerationSession | null>(null);
+  const [liveFilesCount, setLiveFilesCount] = useState(0);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const accessToken = session?.access_token;
 
@@ -99,6 +110,7 @@ export function useWorkspace(projectId: string | undefined) {
     data: workspaceData,
     isLoading: isLoadingWorkspace,
     error: workspaceError,
+    refetch: refetchWorkspace,
   } = useQuery({
     queryKey: ["workspace", projectId],
     queryFn: async () => {
@@ -107,11 +119,110 @@ export function useWorkspace(projectId: string | undefined) {
       return result.workspace as Workspace;
     },
     enabled: !!accessToken && !!projectId,
-    staleTime: 30000, // Cache for 30 seconds
+    staleTime: 30000,
   });
 
   const workspace = workspaceData;
   const workspaceId = workspace?.id;
+
+  // =========================================================================
+  // REALTIME SUBSCRIPTIONS - Live updates during generation
+  // =========================================================================
+
+  useEffect(() => {
+    if (!workspaceId) return;
+
+    // Clean up existing channel
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    // Create a new channel for this workspace
+    const channel = supabase
+      .channel(`workspace-${workspaceId}`)
+      // Listen for generation session updates
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'generation_sessions',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] Generation session update:', payload);
+          
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const session = payload.new as GenerationSession;
+            setLiveSession(session);
+            setGenerationStatus(session.status);
+            
+            // Refetch data when generation completes
+            if (session.status === 'completed' || session.status === 'failed') {
+              queryClient.invalidateQueries({ queryKey: ["workspace-files", workspaceId] });
+              queryClient.invalidateQueries({ queryKey: ["workspace-sessions", workspaceId] });
+              queryClient.invalidateQueries({ queryKey: ["workspace", projectId] });
+            }
+          }
+        }
+      )
+      // Listen for new files being created
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'workspace_files',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] New file created:', payload.new);
+          setLiveFilesCount((prev) => prev + 1);
+          // Invalidate files cache to show new file
+          queryClient.invalidateQueries({ queryKey: ["workspace-files", workspaceId] });
+        }
+      )
+      // Listen for file updates
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workspace_files',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] File updated:', payload.new);
+          queryClient.invalidateQueries({ queryKey: ["workspace-files", workspaceId] });
+        }
+      )
+      // Listen for file operations (audit trail)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'file_operations',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          console.log('[Realtime] File operation:', payload.new);
+          queryClient.invalidateQueries({ queryKey: ["workspace-operations", workspaceId] });
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] Subscription status:', status);
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [workspaceId, projectId, queryClient]);
 
   // =========================================================================
   // GET FILES (READ-ONLY)
@@ -194,39 +305,46 @@ export function useWorkspace(projectId: string | undefined) {
   // GENERATE (SEND PROMPT TO BACKEND AI)
   // =========================================================================
 
-  const generateMutation = useMutation({
-    mutationFn: async (prompt: string) => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<Error | null>(null);
+
+  const generate = useCallback(
+    async (prompt: string) => {
       if (!accessToken || !workspaceId) {
         throw new Error("Not authenticated or no workspace");
       }
 
+      setIsGenerating(true);
+      setGenerationError(null);
       setGenerationStatus("starting");
+      setLiveFilesCount(0);
 
-      const result = await workspaceAPI("generate", accessToken, {
-        workspaceId,
-        data: { prompt },
-      });
+      try {
+        const result = await workspaceAPI("generate", accessToken, {
+          workspaceId,
+          data: { prompt },
+        });
 
-      return result;
-    },
-    onSuccess: () => {
-      setGenerationStatus("complete");
-      // Refresh files and sessions after generation
-      queryClient.invalidateQueries({ queryKey: ["workspace-files", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["workspace-sessions", workspaceId] });
-      queryClient.invalidateQueries({ queryKey: ["workspace-operations", workspaceId] });
-    },
-    onError: (error) => {
-      setGenerationStatus("error");
-      console.error("Generation failed:", error);
-    },
-  });
+        setGenerationStatus("complete");
+        
+        // Refresh all data after generation
+        await Promise.all([
+          refetchFiles(),
+          refetchSessions(),
+          refetchOperations(),
+          refetchWorkspace(),
+        ]);
 
-  const generate = useCallback(
-    async (prompt: string) => {
-      return generateMutation.mutateAsync(prompt);
+        return result;
+      } catch (error) {
+        setGenerationError(error as Error);
+        setGenerationStatus("error");
+        throw error;
+      } finally {
+        setIsGenerating(false);
+      }
     },
-    [generateMutation]
+    [accessToken, workspaceId, refetchFiles, refetchSessions, refetchOperations, refetchWorkspace]
   );
 
   // =========================================================================
@@ -237,20 +355,8 @@ export function useWorkspace(projectId: string | undefined) {
     refetchFiles();
     refetchSessions();
     refetchOperations();
-  }, [refetchFiles, refetchSessions, refetchOperations]);
-
-  // =========================================================================
-  // POLL FOR STATUS UPDATES DURING GENERATION
-  // =========================================================================
-
-  useEffect(() => {
-    if (workspace?.status === "generating") {
-      const interval = setInterval(() => {
-        queryClient.invalidateQueries({ queryKey: ["workspace", projectId] });
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [workspace?.status, projectId, queryClient]);
+    refetchWorkspace();
+  }, [refetchFiles, refetchSessions, refetchOperations, refetchWorkspace]);
 
   // =========================================================================
   // RETURN
@@ -269,11 +375,13 @@ export function useWorkspace(projectId: string | undefined) {
     getFile,
     refetchFiles,
 
-    // Generation
+    // Generation with realtime
     generate,
-    isGenerating: generateMutation.isPending || workspace?.status === "generating",
+    isGenerating: isGenerating || workspace?.status === "generating",
     generationStatus,
-    generationError: generateMutation.error,
+    generationError,
+    liveSession,
+    liveFilesCount,
 
     // History
     sessions,
