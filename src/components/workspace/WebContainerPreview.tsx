@@ -38,26 +38,7 @@ export default function WebContainerPreview({
     isRunning,
   } = useWebContainer(files, { autoStart: false });
 
-  // Check WebContainer support
-  useEffect(() => {
-    // WebContainer requires SharedArrayBuffer which needs cross-origin isolation
-    if (typeof SharedArrayBuffer === "undefined") {
-      setIsSupported(false);
-    }
-  }, []);
-
-  // Notify parent of status changes
-  useEffect(() => {
-    onStatusChange?.(status);
-  }, [status, onStatusChange]);
-
-  // Update files when they change
-  useEffect(() => {
-    if (isRunning && files.length > 0) {
-      updateFiles(files);
-    }
-  }, [files, isRunning, updateFiles]);
-
+  // Handlers for start/restart
   const handleStart = () => {
     if (files.length > 0) {
       start(files);
@@ -70,18 +51,27 @@ export default function WebContainerPreview({
     }
   };
 
-  // Not supported
+  // Check WebContainer support and notify parent if not supported
+  useEffect(() => {
+    // WebContainer requires SharedArrayBuffer which needs cross-origin isolation
+    if (typeof SharedArrayBuffer === "undefined") {
+      setIsSupported(false);
+      // Notify parent to switch back to static preview
+      onStatusChange?.("unsupported");
+    }
+  }, [onStatusChange]);
+  // Not supported - show message and suggest switching to static preview
   if (!isSupported) {
     return (
       <div className={cn("h-full flex items-center justify-center bg-muted/30", isFullWidth && "w-full")}>
         <div className="text-center px-4 max-w-md">
-          <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="h-8 w-8 text-destructive" />
+          <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-8 w-8 text-amber-500" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">WebContainer Not Supported</h3>
+          <h3 className="text-lg font-semibold mb-2">Sandbox Not Available</h3>
           <p className="text-muted-foreground text-sm mb-4">
-            Your browser doesn't support WebContainer. This feature requires SharedArrayBuffer which needs
-            cross-origin isolation. Try using a modern browser like Chrome or Firefox.
+            The live sandbox requires browser features that aren't available in this environment. 
+            Use the <strong>Static</strong> preview tab instead to see your generated code.
           </p>
         </div>
       </div>

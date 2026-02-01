@@ -77,6 +77,7 @@ export default function ProjectWorkspace() {
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<'preview' | 'code' | 'logs'>('preview');
   const [previewMode, setPreviewMode] = useState<'static' | 'sandbox'>('static');
+  const [webContainerSupported, setWebContainerSupported] = useState(true);
   const [currentRoute, setCurrentRoute] = useState('/');
   const [isPublishing, setIsPublishing] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
@@ -673,11 +674,17 @@ export default function ProjectWorkspace() {
                   <TabsList className="h-7">
                     <TabsTrigger value="static" className="text-xs px-3 h-6 gap-1.5">
                       <Eye className="h-3 w-3" />
-                      Static
+                      Preview
                     </TabsTrigger>
-                    <TabsTrigger value="sandbox" className="text-xs px-3 h-6 gap-1.5">
+                    <TabsTrigger 
+                      value="sandbox" 
+                      className="text-xs px-3 h-6 gap-1.5"
+                      disabled={!webContainerSupported}
+                      title={!webContainerSupported ? "Sandbox requires cross-origin isolation" : undefined}
+                    >
                       <Box className="h-3 w-3" />
                       Sandbox
+                      {!webContainerSupported && <span className="text-[10px] opacity-60">(N/A)</span>}
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -695,7 +702,14 @@ export default function ProjectWorkspace() {
                     projectId={projectId!}
                     files={sandboxFiles}
                     isFullWidth={isChatCollapsed}
-                    onStatusChange={setSandboxStatus}
+                    onStatusChange={(status) => {
+                      setSandboxStatus(status);
+                      // Auto-switch to static if WebContainer isn't supported
+                      if (status === 'unsupported') {
+                        setWebContainerSupported(false);
+                        setPreviewMode('static');
+                      }
+                    }}
                   />
                 ) : previewHtml ? (
                   <iframe
