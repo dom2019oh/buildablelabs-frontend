@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PanelLeft } from 'lucide-react';
+import { PanelLeft, Box, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useProject, useUpdateProject } from '@/hooks/useProjects';
@@ -13,6 +13,7 @@ import { useProjectFilesStore, parseCodeFromResponse, generatePreviewHtml, strip
 import WorkspaceTopBar from './WorkspaceTopBar';
 import ProjectChat from './ProjectChat';
 import LivePreview from './LivePreview';
+import WebContainerPreview from './WebContainerPreview';
 import FileExplorer from './FileExplorer';
 import CodeViewer from './CodeViewer';
 import VersionHistoryPanel from './VersionHistoryPanel';
@@ -20,6 +21,7 @@ import ComponentLibraryPanel from './ComponentLibraryPanel';
 import LogsPanel from './LogsPanel';
 import PublishDialog from './PublishDialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -74,6 +76,7 @@ export default function ProjectWorkspace() {
   // UI State
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [activeView, setActiveView] = useState<'preview' | 'code' | 'logs'>('preview');
+  const [previewMode, setPreviewMode] = useState<'static' | 'sandbox'>('static');
   const [currentRoute, setCurrentRoute] = useState('/');
   const [isPublishing, setIsPublishing] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
@@ -87,9 +90,16 @@ export default function ProjectWorkspace() {
   const [lastError, setLastError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [lastMessageContent, setLastMessageContent] = useState<string>('');
+  const [sandboxStatus, setSandboxStatus] = useState<string>('idle');
 
   // Available routes
   const availableRoutes = ['/', '/about', '/contact', '/dashboard', '/settings'];
+  
+  // Prepare files for WebContainer
+  const sandboxFiles = Array.from(files.values()).map(f => ({
+    path: f.path,
+    content: f.content,
+  }));
   
   // Load preview from project on mount
   useEffect(() => {
@@ -656,25 +666,56 @@ export default function ProjectWorkspace() {
             <LogsPanel className="flex-1 h-full" />
           ) : (
             /* Preview Panel */
-            <div className="flex-1 h-full">
-              {previewHtml ? (
-                <iframe
-                  key={previewKey}
-                  srcDoc={previewHtml}
-                  title="Project Preview"
-                  className="w-full h-full border-0 bg-white"
-                  sandbox="allow-scripts"
-                />
-              ) : (
-                <LivePreview
-                  key={previewKey}
-                  projectId={projectId!}
-                  deployedUrl={project.deployed_url}
-                  currentRoute={currentRoute}
-                  status={project.status}
-                  isFullWidth={isChatCollapsed}
-                />
-              )}
+            <div className="flex-1 h-full flex flex-col">
+              {/* Preview Mode Tabs */}
+              <div className="h-10 flex items-center justify-between px-3 border-b border-border bg-muted/30">
+                <Tabs value={previewMode} onValueChange={(v) => setPreviewMode(v as 'static' | 'sandbox')}>
+                  <TabsList className="h-7">
+                    <TabsTrigger value="static" className="text-xs px-3 h-6 gap-1.5">
+                      <Eye className="h-3 w-3" />
+                      Static
+                    </TabsTrigger>
+                    <TabsTrigger value="sandbox" className="text-xs px-3 h-6 gap-1.5">
+                      <Box className="h-3 w-3" />
+                      Sandbox
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                {previewMode === 'sandbox' && (
+                  <span className="text-xs text-muted-foreground">
+                    {sandboxStatus === 'running' ? '🟢 Running' : sandboxStatus === 'installing' ? '📦 Installing...' : sandboxStatus}
+                  </span>
+                )}
+              </div>
+              
+              {/* Preview Content */}
+              <div className="flex-1 overflow-hidden">
+                {previewMode === 'sandbox' ? (
+                  <WebContainerPreview
+                    projectId={projectId!}
+                    files={sandboxFiles}
+                    isFullWidth={isChatCollapsed}
+                    onStatusChange={setSandboxStatus}
+                  />
+                ) : previewHtml ? (
+                  <iframe
+                    key={previewKey}
+                    srcDoc={previewHtml}
+                    title="Project Preview"
+                    className="w-full h-full border-0 bg-white"
+                    sandbox="allow-scripts"
+                  />
+                ) : (
+                  <LivePreview
+                    key={previewKey}
+                    projectId={projectId!}
+                    deployedUrl={project.deployed_url}
+                    currentRoute={currentRoute}
+                    status={project.status}
+                    isFullWidth={isChatCollapsed}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>
