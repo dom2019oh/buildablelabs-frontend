@@ -2,7 +2,8 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, MessageSquare } from "lucide-react";
-import CosmicBackground from "@/components/CosmicBackground";
+import FloatingLines from "@/components/FloatingLines";
+import GradientText from "@/components/GradientText";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -24,8 +25,18 @@ export default function Index() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-black">
-      {/* Cosmic Background */}
-      <CosmicBackground />
+      {/* Floating Lines Background */}
+      <FloatingLines
+        linesGradient={["#3615bc", "#c733c2", "#B19EEF", "#5227FF"]}
+        enabledWaves={["top", "middle", "bottom"]}
+        lineCount={[5, 6, 4]}
+        lineDistance={[5, 5, 5]}
+        bendRadius={5}
+        bendStrength={-0.5}
+        interactive={true}
+        parallax={true}
+        animationSpeed={1}
+      />
 
       {/* Content */}
       <div className="relative z-10">
@@ -33,32 +44,29 @@ export default function Index() {
 
         {/* Hero Section */}
         <section className="min-h-screen flex flex-col items-center justify-center px-6">
-          {/* Large Buildable Title */}
-          <motion.h1
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 2, ease: "easeOut" }}
-            className="text-[clamp(5rem,15vw,12rem)] font-black tracking-tight mb-8"
-            style={{
-              fontFamily: "'Sora', sans-serif",
-              background: "linear-gradient(90deg, #a5b4fc, #c084fc, #60a5fa)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-              textShadow: "0 0 40px rgba(165, 180, 252, 0.4)",
-              letterSpacing: "-0.05em",
-            }}
-          >
-            Buildable
-          </motion.h1>
-
-          {/* Prompt Input Box */}
+          {/* Prompt Input Box with Title */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.5 }}
+            transition={{ duration: 1.5, ease: "easeOut" }}
             className="w-full max-w-2xl mx-auto"
           >
+            {/* Buildable Title Above Prompt */}
+            <div className="flex justify-center mb-8">
+              <GradientText
+                colors={["#3615bc", "#c733c2", "#B19EEF", "#5227FF"]}
+                animationSpeed={3}
+                showBorder={false}
+                className="text-[clamp(4rem,12vw,8rem)] font-black tracking-tight"
+                style={{
+                  fontFamily: "'Sora', sans-serif",
+                  letterSpacing: "-0.05em",
+                }}
+              >
+                Buildable
+              </GradientText>
+            </div>
+
             <form onSubmit={handleSubmit} className="glass-card p-4 input-glow rounded-2xl">
               {/* Main Input Area */}
               <div className="mb-4">
@@ -129,7 +137,7 @@ export default function Index() {
         <footer className="absolute bottom-0 left-0 right-0 py-6 px-6 border-t border-border/30">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">© 2025 Buildable. All rights reserved.</span>
+              <span className="text-sm text-muted-foreground">© 2026 Buildable. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-6">
               <Link to="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
