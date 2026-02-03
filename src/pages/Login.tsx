@@ -36,10 +36,19 @@ export default function Login() {
       localStorage.removeItem('buildable_remember_me');
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    // Sign in with appropriate session expiry based on remember me
+    const { error, data } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
+    if (!error && data.session && rememberMe) {
+      // Manually set a longer session by refreshing with remember me flag
+      // This ensures the session persists for 30 days
+      localStorage.setItem('buildable_session_expiry', 
+        String(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
+      );
+    }
 
     setLoading(false);
 

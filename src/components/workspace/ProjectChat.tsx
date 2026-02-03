@@ -128,7 +128,7 @@ export default function ProjectChat({
   };
 
   return (
-    <div className="h-full flex flex-col bg-background border-r border-border">
+    <div className="h-full flex flex-col bg-zinc-900/95 border-r border-border">
       {/* Chat Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export default function ProjectChat({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-zinc-900/50">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -317,8 +317,8 @@ export default function ProjectChat({
       </div>
 
       {/* Simplified Input Area - Like Lovable */}
-      <div className="p-3 border-t border-border">
-        <div className="relative bg-muted/30 rounded-xl border border-border/50 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
+      <div className="p-3 border-t border-border/50 bg-zinc-900/80">
+        <div className="relative bg-zinc-800/80 rounded-xl border border-zinc-700/50 focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-600/50 transition-all">
           <textarea
             ref={textareaRef}
             value={input}

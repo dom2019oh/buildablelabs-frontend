@@ -1,14 +1,8 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ChevronLeft,
   Settings,
-  Copy,
-  User,
-  Star,
-  FolderInput,
   Gift,
-  Moon,
   HelpCircle,
   ChevronRight,
   ExternalLink,
@@ -20,9 +14,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +28,6 @@ interface ProjectDropdownProps {
 
 export default function ProjectDropdown({ projectName, projectId }: ProjectDropdownProps) {
   const { totalCredits, subscription, credits } = useCredits();
-  const [isStarred, setIsStarred] = useState(false);
   
   // Calculate credit percentage for progress bar
   const maxCredits = subscription?.selected_credits || 100;
@@ -109,38 +99,10 @@ export default function ProjectDropdown({ projectName, projectId }: ProjectDropd
           </Link>
         </DropdownMenuItem>
         
-        {/* Remix */}
-        <DropdownMenuItem className="gap-2 cursor-pointer">
-          <Copy className="h-4 w-4" />
-          Remix this project
-        </DropdownMenuItem>
-        
-        {/* Create Profile */}
-        <DropdownMenuItem className="gap-2 cursor-pointer">
-          <User className="h-4 w-4" />
-          Create profile
-          <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">New</Badge>
-        </DropdownMenuItem>
-        
         {/* Rename */}
         <DropdownMenuItem className="gap-2 cursor-pointer">
           <Settings className="h-4 w-4" />
           Rename project
-        </DropdownMenuItem>
-        
-        {/* Star */}
-        <DropdownMenuItem 
-          className="gap-2 cursor-pointer"
-          onClick={() => setIsStarred(!isStarred)}
-        >
-          <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-          {isStarred ? 'Unstar project' : 'Star project'}
-        </DropdownMenuItem>
-        
-        {/* Move to Folder */}
-        <DropdownMenuItem className="gap-2 cursor-pointer">
-          <FolderInput className="h-4 w-4" />
-          Move to folder
         </DropdownMenuItem>
         
         {/* Bonuses */}
@@ -153,19 +115,6 @@ export default function ProjectDropdown({ projectName, projectId }: ProjectDropd
         </DropdownMenuItem>
         
         <DropdownMenuSeparator />
-        
-        {/* Appearance Submenu */}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="gap-2">
-            <Moon className="h-4 w-4" />
-            Appearance
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="bg-popover border-border">
-            <DropdownMenuItem>Light</DropdownMenuItem>
-            <DropdownMenuItem>Dark</DropdownMenuItem>
-            <DropdownMenuItem>System</DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
         
         {/* Help */}
         <DropdownMenuItem asChild className="gap-2 cursor-pointer">

@@ -76,13 +76,13 @@ export default function LivePreview({
 
   if (!previewUrl) {
     return (
-      <div className={cn('h-full flex items-center justify-center bg-muted/30', isFullWidth && 'w-full')}>
+      <div className={cn('h-full flex items-center justify-center bg-zinc-900', isFullWidth && 'w-full')}>
         <div className="text-center px-4">
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-            <Globe className="h-8 w-8 text-muted-foreground" />
+          <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-4">
+            <Globe className="h-8 w-8 text-zinc-500" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">Preview Area</h3>
-          <p className="text-muted-foreground text-sm max-w-xs">
+          <h3 className="text-lg font-semibold mb-2 text-zinc-200">Preview Area</h3>
+          <p className="text-zinc-500 text-sm max-w-xs">
             Your generated website will appear here. Start by describing what you want to build in the chat.
           </p>
         </div>

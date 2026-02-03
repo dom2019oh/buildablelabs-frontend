@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Check if user wants to be remembered
     const rememberMe = localStorage.getItem('buildable_remember_me') === 'true';
+    const sessionExpiry = localStorage.getItem('buildable_session_expiry');
 
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -54,13 +55,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Use setTimeout to avoid Supabase client deadlock
           setTimeout(() => fetchProfile(session.user.id), 0);
           
-          // If remember me is enabled, refresh session to extend it
-          if (rememberMe && event === 'SIGNED_IN') {
-            // The session will persist based on Supabase's default settings
-            // which respects the JWT expiry time
+          // If remember me is enabled, check if we need to refresh session
+          if (rememberMe && event === 'TOKEN_REFRESHED') {
+            // Extend the expiry on token refresh
+            localStorage.setItem('buildable_session_expiry', 
+              String(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            );
           }
         } else {
           setProfile(null);
+          // Clear session expiry when logged out
+          localStorage.removeItem('buildable_session_expiry');
         }
         
         setLoading(false);
@@ -69,22 +74,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // Check if the remember me session is still valid
+      if (rememberMe && sessionExpiry) {
+        const expiryTime = parseInt(sessionExpiry, 10);
+        if (Date.now() > expiryTime) {
+          // Session has expired, sign out
+          supabase.auth.signOut();
+          localStorage.removeItem('buildable_remember_me');
+          localStorage.removeItem('buildable_session_expiry');
+          setLoading(false);
+          return;
+        }
+      }
+
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
         fetchProfile(session.user.id);
         
-        // Check session expiry and refresh if needed for "remember me"
-        if (rememberMe && session.expires_at) {
-          const expiresAt = session.expires_at * 1000; // Convert to ms
-          const now = Date.now();
-          const timeUntilExpiry = expiresAt - now;
-          
-          // If session expires in less than 7 days, refresh it
-          if (timeUntilExpiry < 7 * 24 * 60 * 60 * 1000) {
-            supabase.auth.refreshSession();
-          }
+        // Proactively refresh session if remember me is enabled
+        if (rememberMe) {
+          // Refresh session to keep it alive for 30 days
+          supabase.auth.refreshSession().then(({ data }) => {
+            if (data.session) {
+              // Update expiry on successful refresh
+              localStorage.setItem('buildable_session_expiry', 
+                String(Date.now() + 30 * 24 * 60 * 60 * 1000)
+              );
+            }
+          });
         }
       }
       
@@ -96,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     localStorage.removeItem('buildable_remember_me');
+    localStorage.removeItem('buildable_session_expiry');
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
