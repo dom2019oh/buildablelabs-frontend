@@ -7,18 +7,31 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
-import { bearerAuth } from 'hono/bearer-auth';
 import { env } from './config/env';
 import { logger } from './utils/logger';
+import { supabase } from './db/client';
 
 // Routes
 import { workspaceRoutes } from './api/workspace';
 import { generateRoutes } from './api/generate';
 import { previewRoutes } from './api/preview';
+import { creditsRoutes } from './api/credits';
 
 // Services
 import { initializeQueue } from './queue/worker';
 import { PreviewManager } from './services/preview/manager';
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+// Extend Hono context with user data
+declare module 'hono' {
+  interface ContextVariableMap {
+    userId: string;
+    userEmail: string;
+  }
+}
 
 // =============================================================================
 // APP SETUP
@@ -32,6 +45,7 @@ app.use('*', cors({
   origin: env.CORS_ORIGINS,
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
 
 // Health check (unauthenticated)
@@ -49,32 +63,49 @@ app.get('/health', (c) => {
 
 const api = new Hono();
 
-// JWT verification middleware
+// JWT verification middleware using Supabase
 api.use('*', async (c, next) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Unauthorized' }, 401);
+    return c.json({ error: 'Unauthorized: Missing token' }, 401);
   }
   
   const token = authHeader.slice(7);
   
-  // Verify JWT with Supabase
-  const { data, error } = await c.get('supabase').auth.getUser(token);
-  if (error || !data.user) {
-    return c.json({ error: 'Invalid token' }, 401);
+  try {
+    // Verify JWT with Supabase using getClaims
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    
+    if (claimsError || !claimsData?.claims) {
+      logger.warn({ error: claimsError }, 'JWT verification failed');
+      return c.json({ error: 'Unauthorized: Invalid token' }, 401);
+    }
+
+    const userId = claimsData.claims.sub as string;
+    const userEmail = (claimsData.claims.email as string) || '';
+
+    if (!userId) {
+      return c.json({ error: 'Unauthorized: No user ID in token' }, 401);
+    }
+    
+    // Attach user to context
+    c.set('userId', userId);
+    c.set('userEmail', userEmail);
+    
+    logger.debug({ userId }, 'User authenticated');
+    
+    await next();
+  } catch (err) {
+    logger.error({ err }, 'Auth middleware error');
+    return c.json({ error: 'Unauthorized: Token verification failed' }, 401);
   }
-  
-  // Attach user to context
-  c.set('user', data.user);
-  c.set('userId', data.user.id);
-  
-  await next();
 });
 
 // Mount routes
 api.route('/workspace', workspaceRoutes);
 api.route('/generate', generateRoutes);
 api.route('/preview', previewRoutes);
+api.route('/credits', creditsRoutes);
 
 app.route('/api', api);
 
@@ -102,12 +133,20 @@ async function start() {
   logger.info('Starting Buildable Backend...');
   
   // Initialize job queue
-  await initializeQueue();
-  logger.info('Job queue initialized');
+  try {
+    await initializeQueue();
+    logger.info('Job queue initialized');
+  } catch (err) {
+    logger.warn({ err }, 'Job queue initialization skipped (Redis may not be configured)');
+  }
   
   // Initialize preview manager
-  await PreviewManager.initialize();
-  logger.info('Preview manager initialized');
+  try {
+    await PreviewManager.initialize();
+    logger.info('Preview manager initialized');
+  } catch (err) {
+    logger.warn({ err }, 'Preview manager initialization skipped');
+  }
   
   // Start server
   const port = env.PORT;

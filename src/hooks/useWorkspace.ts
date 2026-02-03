@@ -1,5 +1,5 @@
 // =============================================================================
-// useWorkspace - Hook for interacting with the workspace backend
+// useWorkspace - Hook for interacting with the Railway backend
 // =============================================================================
 // This is the primary interface between the read-only frontend and the backend.
 // All AI operations, file reading, and workspace state are managed through this hook.
@@ -58,10 +58,47 @@ export interface FileOperation {
 }
 
 // =============================================================================
-// API HELPER
+// BACKEND API CONFIGURATION
 // =============================================================================
 
-async function workspaceAPI(
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://api.buildablelabs.dev";
+
+// =============================================================================
+// API HELPER - Calls Railway Backend REST API
+// =============================================================================
+
+async function backendAPI<T = unknown>(
+  endpoint: string,
+  accessToken: string,
+  options: {
+    method?: "GET" | "POST" | "PUT" | "DELETE";
+    body?: Record<string, unknown>;
+  } = {}
+): Promise<T> {
+  const { method = "GET", body } = options;
+
+  const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Request failed" }));
+    throw new Error(error.error || `API request failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// =============================================================================
+// FALLBACK: Edge Function API (if Railway backend unavailable)
+// =============================================================================
+
+async function edgeFunctionAPI(
   action: string,
   accessToken: string,
   data?: Record<string, unknown>
@@ -99,6 +136,9 @@ export function useWorkspace(projectId: string | undefined) {
   const [liveSession, setLiveSession] = useState<GenerationSession | null>(null);
   const [liveFilesCount, setLiveFilesCount] = useState(0);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  
+  // Backend preference (Railway vs Edge Function)
+  const [useRailwayBackend] = useState(true);
 
   const accessToken = session?.access_token;
 
@@ -115,11 +155,28 @@ export function useWorkspace(projectId: string | undefined) {
     queryKey: ["workspace", projectId],
     queryFn: async () => {
       if (!accessToken || !projectId) return null;
-      const result = await workspaceAPI("getOrCreateWorkspace", accessToken, { projectId });
-      return result.workspace as Workspace;
+      
+      if (useRailwayBackend) {
+        // Railway Backend: POST /api/workspace
+        const result = await backendAPI<{ workspace: Workspace }>(
+          "/api/workspace",
+          accessToken,
+          { method: "POST", body: { projectId } }
+        );
+        return result.workspace;
+      } else {
+        // Fallback: Edge Function
+        const result = await edgeFunctionAPI("getOrCreateWorkspace", accessToken, { projectId });
+        return result.workspace as Workspace;
+      }
     },
     enabled: !!accessToken && !!projectId,
     staleTime: 30000,
+    retry: (failureCount, error) => {
+      // If Railway fails, could add fallback logic here
+      console.warn("Workspace fetch failed:", error);
+      return failureCount < 2;
+    },
   });
 
   const workspace = workspaceData;
@@ -236,8 +293,18 @@ export function useWorkspace(projectId: string | undefined) {
     queryKey: ["workspace-files", workspaceId],
     queryFn: async () => {
       if (!accessToken || !workspaceId) return [];
-      const result = await workspaceAPI("getFiles", accessToken, { workspaceId });
-      return result.files as WorkspaceFile[];
+      
+      if (useRailwayBackend) {
+        // Railway Backend: GET /api/workspace/:id/files
+        const result = await backendAPI<{ files: WorkspaceFile[] }>(
+          `/api/workspace/${workspaceId}/files`,
+          accessToken
+        );
+        return result.files;
+      } else {
+        const result = await edgeFunctionAPI("getFiles", accessToken, { workspaceId });
+        return result.files as WorkspaceFile[];
+      }
     },
     enabled: !!accessToken && !!workspaceId,
     staleTime: 10000,
@@ -252,13 +319,23 @@ export function useWorkspace(projectId: string | undefined) {
   const getFile = useCallback(
     async (filePath: string): Promise<WorkspaceFile | null> => {
       if (!accessToken || !workspaceId) return null;
-      const result = await workspaceAPI("getFile", accessToken, {
-        workspaceId,
-        data: { filePath },
-      });
-      return result.file;
+      
+      if (useRailwayBackend) {
+        // Railway Backend: GET /api/workspace/:id/files/:path
+        const result = await backendAPI<{ file: WorkspaceFile }>(
+          `/api/workspace/${workspaceId}/files/${encodeURIComponent(filePath)}`,
+          accessToken
+        );
+        return result.file;
+      } else {
+        const result = await edgeFunctionAPI("getFile", accessToken, {
+          workspaceId,
+          data: { filePath },
+        });
+        return result.file;
+      }
     },
-    [accessToken, workspaceId]
+    [accessToken, workspaceId, useRailwayBackend]
   );
 
   // =========================================================================
@@ -272,8 +349,18 @@ export function useWorkspace(projectId: string | undefined) {
     queryKey: ["workspace-sessions", workspaceId],
     queryFn: async () => {
       if (!accessToken || !workspaceId) return [];
-      const result = await workspaceAPI("getSessions", accessToken, { workspaceId });
-      return result.sessions as GenerationSession[];
+      
+      if (useRailwayBackend) {
+        // Railway Backend: GET /api/workspace/:id/sessions
+        const result = await backendAPI<{ sessions: GenerationSession[] }>(
+          `/api/workspace/${workspaceId}/sessions`,
+          accessToken
+        );
+        return result.sessions;
+      } else {
+        const result = await edgeFunctionAPI("getSessions", accessToken, { workspaceId });
+        return result.sessions as GenerationSession[];
+      }
     },
     enabled: !!accessToken && !!workspaceId,
     staleTime: 5000,
@@ -292,8 +379,18 @@ export function useWorkspace(projectId: string | undefined) {
     queryKey: ["workspace-operations", workspaceId],
     queryFn: async () => {
       if (!accessToken || !workspaceId) return [];
-      const result = await workspaceAPI("getOperationHistory", accessToken, { workspaceId });
-      return result.operations as FileOperation[];
+      
+      if (useRailwayBackend) {
+        // Railway Backend: GET /api/workspace/:id/operations
+        const result = await backendAPI<{ operations: FileOperation[] }>(
+          `/api/workspace/${workspaceId}/operations`,
+          accessToken
+        );
+        return result.operations;
+      } else {
+        const result = await edgeFunctionAPI("getOperationHistory", accessToken, { workspaceId });
+        return result.operations as FileOperation[];
+      }
     },
     enabled: !!accessToken && !!workspaceId,
     staleTime: 5000,
@@ -320,10 +417,21 @@ export function useWorkspace(projectId: string | undefined) {
       setLiveFilesCount(0);
 
       try {
-        const result = await workspaceAPI("generate", accessToken, {
-          workspaceId,
-          data: { prompt },
-        });
+        let result;
+        
+        if (useRailwayBackend) {
+          // Railway Backend: POST /api/generate/:workspaceId
+          result = await backendAPI<{ success: boolean; sessionId: string; message: string }>(
+            `/api/generate/${workspaceId}`,
+            accessToken,
+            { method: "POST", body: { prompt } }
+          );
+        } else {
+          result = await edgeFunctionAPI("generate", accessToken, {
+            workspaceId,
+            data: { prompt },
+          });
+        }
 
         setGenerationStatus("complete");
         
@@ -335,7 +443,11 @@ export function useWorkspace(projectId: string | undefined) {
           refetchWorkspace(),
         ]);
 
-        return result;
+        return {
+          success: result.success,
+          sessionId: result.sessionId,
+          filesGenerated: 0, // Will be updated via realtime
+        };
       } catch (error) {
         setGenerationError(error as Error);
         setGenerationStatus("error");
@@ -344,7 +456,75 @@ export function useWorkspace(projectId: string | undefined) {
         setIsGenerating(false);
       }
     },
-    [accessToken, workspaceId, refetchFiles, refetchSessions, refetchOperations, refetchWorkspace]
+    [accessToken, workspaceId, useRailwayBackend, refetchFiles, refetchSessions, refetchOperations, refetchWorkspace]
+  );
+
+  // =========================================================================
+  // ESTIMATE CREDITS
+  // =========================================================================
+
+  const estimateCredits = useCallback(
+    async (prompt: string) => {
+      if (!accessToken || !workspaceId) return null;
+      
+      if (useRailwayBackend) {
+        // Railway Backend: POST /api/generate/:workspaceId/estimate
+        const result = await backendAPI<{ estimatedTokens: number; estimatedCredits: number; complexity: string }>(
+          `/api/generate/${workspaceId}/estimate`,
+          accessToken,
+          { method: "POST", body: { prompt } }
+        );
+        return result;
+      }
+      
+      return null;
+    },
+    [accessToken, workspaceId, useRailwayBackend]
+  );
+
+  // =========================================================================
+  // GET SESSION STATUS
+  // =========================================================================
+
+  const getSessionStatus = useCallback(
+    async (sessionId: string) => {
+      if (!accessToken) return null;
+      
+      if (useRailwayBackend) {
+        // Railway Backend: GET /api/generate/session/:sessionId
+        const result = await backendAPI<{ session: GenerationSession }>(
+          `/api/generate/session/${sessionId}`,
+          accessToken
+        );
+        return result.session;
+      }
+      
+      return null;
+    },
+    [accessToken, useRailwayBackend]
+  );
+
+  // =========================================================================
+  // CANCEL GENERATION
+  // =========================================================================
+
+  const cancelGeneration = useCallback(
+    async (sessionId: string) => {
+      if (!accessToken) return;
+      
+      if (useRailwayBackend) {
+        // Railway Backend: POST /api/generate/session/:sessionId/cancel
+        await backendAPI(
+          `/api/generate/session/${sessionId}/cancel`,
+          accessToken,
+          { method: "POST" }
+        );
+      }
+      
+      setIsGenerating(false);
+      setGenerationStatus(null);
+    },
+    [accessToken, useRailwayBackend]
   );
 
   // =========================================================================
@@ -382,6 +562,11 @@ export function useWorkspace(projectId: string | undefined) {
     generationError,
     liveSession,
     liveFilesCount,
+    
+    // Extended generation features
+    estimateCredits,
+    getSessionStatus,
+    cancelGeneration,
 
     // History
     sessions,

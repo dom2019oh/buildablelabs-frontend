@@ -3,7 +3,9 @@
 // =============================================================================
 
 import { supabase } from './client';
-import { nanoid } from 'nanoid';
+
+// Re-export supabase for direct access in routes
+export { supabase };
 
 // =============================================================================
 // WORKSPACE QUERIES
@@ -16,7 +18,7 @@ export async function getOrCreateWorkspace(projectId: string, userId: string) {
     .select('*')
     .eq('project_id', projectId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     return existing;
@@ -43,7 +45,7 @@ export async function getWorkspace(workspaceId: string, userId: string) {
     .select('*')
     .eq('id', workspaceId)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data;
