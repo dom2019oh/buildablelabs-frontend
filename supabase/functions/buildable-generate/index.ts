@@ -15,7 +15,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LOVABLE_AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+// Avoid Lovable AI Gateway during testing (it can return 402 payment_required).
+// Use direct provider APIs instead.
+const OPENAI_CHAT_COMPLETIONS = "https://api.openai.com/v1/chat/completions";
 
 const MODELS = {
   architect: "google/gemini-2.5-pro",
@@ -176,7 +178,7 @@ async function saveFilesToWorkspace(
 
 async function streamGeneration(
   supabase: DB,
-  apiKey: string,
+  openaiApiKey: string,
   workspaceId: string,
   userId: string,
   prompt: string,
@@ -224,15 +226,16 @@ async function streamGeneration(
     { role: "user", content: prompt }
   ];
 
-  // Call AI Gateway with streaming
-  const aiResponse = await fetch(LOVABLE_AI_GATEWAY, {
+  // Call OpenAI with streaming (SSE format is compatible with our downstream parser)
+  const aiResponse = await fetch(OPENAI_CHAT_COMPLETIONS, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
+      "Authorization": `Bearer ${openaiApiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: MODELS.code,
+      // Use a real OpenAI model name (MODELS above is for Lovable AI routing)
+      model: "gpt-4o-mini",
       messages,
       stream: true,
       max_tokens: 12000,
@@ -260,7 +263,7 @@ async function streamGeneration(
       .update({ status: "error" })
       .eq("id", workspaceId);
 
-    throw new Error(`AI Gateway error: ${aiResponse.status} - ${error}`);
+    throw new Error(`AI error: ${aiResponse.status} - ${error}`);
   }
 
   // Create a transform stream to:
@@ -278,7 +281,7 @@ async function streamGeneration(
         sessionId,
         workspaceId,
         status: "generating",
-        model: MODELS.code,
+         model: "gpt-4o-mini",
       };
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`));
     },
@@ -383,9 +386,9 @@ serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) {
-      throw new Error("LOVABLE_API_KEY not configured");
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiApiKey) {
+      throw new Error("OPENAI_API_KEY not configured");
     }
 
     const authHeader = req.headers.get("Authorization");
@@ -513,7 +516,7 @@ serve(async (req) => {
     // Stream the generation
     return await streamGeneration(
       supabase,
-      apiKey,
+      openaiApiKey,
       wsId,
       user.id,
       prompt,
