@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/tooltip';
 import RouteCommandBar from './RouteCommandBar';
 import ProjectDropdown from './ProjectDropdown';
+import { UserCredits } from './UserCredits';
 
 interface WorkspaceTopBarProps {
   projectName: string;
@@ -184,6 +185,12 @@ export default function WorkspaceTopBar({
 
       {/* Right Zone - Project Actions */}
       <div className="flex items-center gap-2">
+        {/* User Credits */}
+        <UserCredits />
+        
+        {/* Divider */}
+        <div className="h-6 w-px bg-border" />
+        
         <Button 
           variant="outline" 
           size="sm" 
