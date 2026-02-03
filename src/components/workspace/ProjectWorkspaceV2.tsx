@@ -8,7 +8,7 @@
 // - Shows previews via iframe
 // - Never modifies files directly
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PanelLeft, Box, Eye, Loader2, RefreshCw } from 'lucide-react';
@@ -146,8 +146,28 @@ export default function ProjectWorkspace() {
   const [previewKey, setPreviewKey] = useState(0);
   const [lastFilesCreated, setLastFilesCreated] = useState<string[]>([]);
 
-  // Available routes (could come from backend in future)
-  const availableRoutes = ['/', '/about', '/contact', '/dashboard', '/settings'];
+  // Extract available routes from page files dynamically
+  const availableRoutes = useMemo(() => {
+    const routes = new Set<string>(['/']);
+    
+    for (const file of files) {
+      // Match files in src/pages/ directory
+      if (file.file_path.startsWith('src/pages/')) {
+        const filename = file.file_path.replace('src/pages/', '').replace(/\.(tsx|ts|jsx|js)$/, '');
+        if (filename.toLowerCase() === 'index') {
+          routes.add('/');
+        } else {
+          // Convert PascalCase to kebab-case for route
+          const routeName = filename
+            .replace(/([a-z])([A-Z])/g, '$1-$2')
+            .toLowerCase();
+          routes.add(`/${routeName}`);
+        }
+      }
+    }
+    
+    return Array.from(routes).sort();
+  }, [files]);
 
   // Build file tree from backend files
   const fileTree = buildFileTree(files.map(f => ({ file_path: f.file_path, content: f.content })));
