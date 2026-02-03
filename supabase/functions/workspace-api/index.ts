@@ -107,11 +107,19 @@ RULES:
 // HELPER FUNCTIONS
 // =============================================================================
 
-async function getAuthenticatedUser(supabase: DB, authHeader: string) {
+async function getAuthenticatedUser(authHeader: string) {
   const token = authHeader.replace("Bearer ", "");
-  const { data: claimsData, error } = await supabase.auth.getClaims(token);
+  
+  // Use ANON key client for getClaims (service role doesn't work for JWT verification)
+  const anonClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!
+  );
+  
+  const { data: claimsData, error } = await anonClient.auth.getClaims(token);
   
   if (error || !claimsData?.claims) {
+    console.error("Auth error:", error?.message || "No claims found");
     throw new Error("Unauthorized");
   }
   
@@ -482,7 +490,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase: DB = createClient(supabaseUrl, supabaseKey);
 
-    const user = await getAuthenticatedUser(supabase, authHeader);
+    const user = await getAuthenticatedUser(authHeader);
     const body: APIRequest = await req.json();
 
     console.log(`Workspace API: action=${body.action}, user=${user.id}`);
