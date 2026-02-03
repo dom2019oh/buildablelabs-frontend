@@ -138,7 +138,8 @@ export function useWorkspace(projectId: string | undefined) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   
   // Backend preference (Railway vs Edge Function)
-  const [useRailwayBackend] = useState(true);
+  // Using Edge Functions since they have access to Lovable Cloud's service_role key
+  const [useRailwayBackend] = useState(false);
 
   const accessToken = session?.access_token;
 
