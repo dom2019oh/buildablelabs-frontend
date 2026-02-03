@@ -26,7 +26,7 @@ export default function Index() {
     <div className="relative min-h-screen overflow-hidden bg-black">
       {/* Floating Lines Background */}
       <FloatingLines
-        linesGradient={["#000000", "#ffffff", "#9ca3af"]}
+        linesGradient={["#000000", "#ffffff", "#d1d5db"]}
         enabledWaves={["top", "middle", "bottom"]}
         lineCount={5}
         lineDistance={5}
@@ -41,8 +41,8 @@ export default function Index() {
         <Navbar />
 
         {/* Hero Section */}
-        <section className="min-h-screen flex flex-col items-center justify-center px-6">
-          {/* Prompt Input Box with Title */}
+        <section className="min-h-screen flex flex-col items-center justify-center px-6 pt-24">
+          {/* Prompt Input Box */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -99,13 +99,13 @@ export default function Index() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8"
           >
             {user ? (
-              <Link to="/dashboard" className="gradient-button flex items-center gap-2">
+              <Link to="/dashboard" className="glass-button flex items-center gap-2">
                 Go to Dashboard
                 <ArrowRight className="w-4 h-4" />
               </Link>
             ) : (
-              <Link to="/sign-up" className="gradient-button flex items-center gap-2">
-                Get Started Free
+              <Link to="/sign-up" className="glass-button flex items-center gap-2">
+                Try Buildable
                 <ArrowRight className="w-4 h-4" />
               </Link>
             )}
