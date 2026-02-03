@@ -53,8 +53,8 @@ export default function Navbar() {
         </Link>
 
         {/* Links and account on the right */}
-        <div className="flex items-center gap-6">
-          {navLinks.map(link => <Link key={link.href} to={link.href} className={`text-sm font-medium transition-colors duration-200 ${location.pathname === link.href ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+        <div className="flex items-center gap-8">
+          {navLinks.map(link => <Link key={link.href} to={link.href} className={`text-sm font-medium transition-colors duration-200 ${location.pathname === link.href ? "text-white" : "text-white/80 hover:text-white"}`}>
               {link.label}
             </Link>)}
 
