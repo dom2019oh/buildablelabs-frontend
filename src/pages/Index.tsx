@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, MessageSquare } from "lucide-react";
 import FloatingLines from "@/components/FloatingLines";
-import GradientText from "@/components/GradientText";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -27,15 +26,14 @@ export default function Index() {
     <div className="relative min-h-screen overflow-hidden bg-black">
       {/* Floating Lines Background */}
       <FloatingLines
-        linesGradient={["#3615bc", "#c733c2", "#B19EEF", "#5227FF"]}
+        linesGradient={["#000000", "#ffffff", "#9ca3af"]}
         enabledWaves={["top", "middle", "bottom"]}
-        lineCount={[5, 6, 4]}
-        lineDistance={[5, 5, 5]}
+        lineCount={5}
+        lineDistance={5}
         bendRadius={5}
         bendStrength={-0.5}
         interactive={true}
         parallax={true}
-        animationSpeed={1}
       />
 
       {/* Content */}
@@ -51,22 +49,6 @@ export default function Index() {
             transition={{ duration: 1.5, ease: "easeOut" }}
             className="w-full max-w-2xl mx-auto"
           >
-            {/* Buildable Title Above Prompt */}
-            <div className="flex justify-center mb-8">
-              <GradientText
-                colors={["#3615bc", "#c733c2", "#B19EEF", "#5227FF"]}
-                animationSpeed={3}
-                showBorder={false}
-                className="text-[clamp(4rem,12vw,8rem)] font-black tracking-tight"
-                style={{
-                  fontFamily: "'Sora', sans-serif",
-                  letterSpacing: "-0.05em",
-                }}
-              >
-                Buildable
-              </GradientText>
-            </div>
-
             <form onSubmit={handleSubmit} className="glass-card p-4 input-glow rounded-2xl">
               {/* Main Input Area */}
               <div className="mb-4">
