@@ -1,13 +1,13 @@
 // =============================================================================
-// Architect Service - Project Planning Phase
+// Architect Service - Project Planning Phase (Gemini Primary)
 // =============================================================================
-// Converts user prompts into structured project plans.
-// NO code is generated at this stage - only planning.
+// Converts user prompts into structured project plans using Buildable AI.
+// Uses Gemini for intent parsing and planning - NO code generated at this stage.
 
-import OpenAI from 'openai';
 import { z } from 'zod';
 import { aiLogger as logger } from '../../utils/logger';
-import { env } from '../../config/env';
+import { getBuildableAI, type BuildableAIResponse } from './buildable-ai';
+import { TaskType } from './models';
 import type { ProjectPlan } from './pipeline';
 
 // =============================================================================
@@ -15,58 +15,84 @@ import type { ProjectPlan } from './pipeline';
 // =============================================================================
 
 const projectPlanSchema = z.object({
-  projectType: z.string(),
+  projectType: z.enum([
+    'landing-page',
+    'dashboard',
+    'e-commerce',
+    'blog',
+    'app',
+    'mobile-app',
+    'api',
+    'fullstack',
+  ]),
   description: z.string(),
   files: z.array(z.object({
     path: z.string(),
     purpose: z.string(),
     dependencies: z.array(z.string()),
+    priority: z.number().optional(),
   })),
   dependencies: z.array(z.string()),
   routes: z.array(z.string()).optional(),
+  framework: z.enum(['react', 'vue', 'svelte', 'node', 'django', 'react-native', 'flutter']).optional(),
+  styling: z.enum(['tailwind', 'css', 'scss', 'styled-components']).optional(),
 });
 
 // =============================================================================
-// ARCHITECT
+// ARCHITECT RESULT
+// =============================================================================
+
+export interface ArchitectResult {
+  plan: ProjectPlan;
+  tokensUsed: number;
+  cost: number;
+}
+
+// =============================================================================
+// ARCHITECT CLASS
 // =============================================================================
 
 export class Architect {
-  private client: OpenAI;
-  private model: string;
+  private ai = getBuildableAI();
 
-  constructor(model: string = 'gpt-4o') {
-    this.client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-    this.model = model;
-  }
-
+  /**
+   * Create a structured project plan from a user prompt
+   * Uses Gemini (via Buildable AI) for planning tasks
+   */
   async createPlan(
     prompt: string,
     existingFiles: Array<{ file_path: string; content: string }>
-  ): Promise<ProjectPlan> {
+  ): Promise<ArchitectResult> {
     const systemPrompt = `You are an expert software architect. Your job is to analyze user requirements and create a structured project plan.
 
 You must output a JSON object with this structure:
 {
-  "projectType": "landing-page" | "dashboard" | "e-commerce" | "blog" | "app",
+  "projectType": "landing-page" | "dashboard" | "e-commerce" | "blog" | "app" | "mobile-app" | "api" | "fullstack",
   "description": "Brief description of what will be built",
   "files": [
     {
       "path": "src/components/Hero.tsx",
       "purpose": "Hero section with headline and CTA",
-      "dependencies": ["src/components/ui/button.tsx"]
+      "dependencies": ["src/components/ui/button.tsx"],
+      "priority": 1
     }
   ],
   "dependencies": ["package-name"],
-  "routes": ["/", "/about", "/contact"]
+  "routes": ["/", "/about", "/contact"],
+  "framework": "react" | "vue" | "svelte" | "node" | "django" | "react-native" | "flutter",
+  "styling": "tailwind" | "css" | "scss" | "styled-components"
 }
 
 Rules:
-1. Use React + Vite + TypeScript + Tailwind CSS stack
-2. Prefer shadcn/ui components (already installed)
-3. Keep files small and focused (under 200 lines each)
-4. Use proper component organization: pages, components, hooks, lib
-5. Consider existing files and avoid conflicts
-6. Plan for incremental builds - each file should be independently valid
+1. Support multiple stacks: React, Vue, Svelte (frontend), Node, Django (backend), React Native, Flutter (mobile)
+2. Default to React + Vite + TypeScript + Tailwind CSS if not specified
+3. Prefer shadcn/ui components for React projects (already installed)
+4. Keep files small and focused (under 200 lines each)
+5. Use proper component organization: pages, components, hooks, lib, utils
+6. Consider existing files and avoid conflicts
+7. Plan for incremental builds - each file should be independently valid
+8. Assign priority numbers (1 = highest) based on dependency order
+9. For mobile hints, suggest React Native or Flutter patterns
 
 Existing files in project:
 ${existingFiles.map(f => f.file_path).join('\n') || 'None (new project)'}`;
@@ -77,33 +103,90 @@ ${prompt}
 
 Output ONLY valid JSON, no markdown or explanation.`;
 
-    logger.info({ model: this.model, promptLength: prompt.length }, 'Creating project plan');
+    logger.info({ promptLength: prompt.length, existingFiles: existingFiles.length }, 'Creating project plan');
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: { type: 'json_object' },
+    const response = await this.ai.execute({
+      task: TaskType.PLANNING,
+      systemPrompt,
+      userPrompt,
       temperature: 0.7,
-      max_tokens: 4000,
+      maxTokens: 4000,
+      jsonMode: true,
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No response from AI');
-    }
-
     // Parse and validate
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(response.content);
     const validated = projectPlanSchema.parse(parsed);
 
-    logger.info({ 
+    logger.info({
       filesPlanned: validated.files.length,
       projectType: validated.projectType,
+      framework: validated.framework || 'react',
+      provider: response.provider,
+      model: response.model,
     }, 'Plan created successfully');
 
-    return validated;
+    return {
+      plan: validated,
+      tokensUsed: response.usage.totalTokens,
+      cost: response.cost,
+    };
+  }
+
+  /**
+   * Analyze an existing project to understand its structure
+   */
+  async analyzeProject(
+    files: Array<{ file_path: string; content: string }>
+  ): Promise<{
+    framework: string;
+    styling: string;
+    structure: string;
+    suggestions: string[];
+    tokensUsed: number;
+    cost: number;
+  }> {
+    const fileList = files.map(f => `- ${f.file_path}`).join('\n');
+    const sampleContents = files
+      .slice(0, 5)
+      .map(f => `### ${f.file_path}\n\`\`\`\n${f.content.slice(0, 500)}\n\`\`\``)
+      .join('\n\n');
+
+    const response = await this.ai.execute({
+      task: TaskType.PLANNING,
+      systemPrompt: `You are analyzing an existing project structure. Identify the framework, styling approach, and architecture.
+Return JSON: { "framework": string, "styling": string, "structure": string, "suggestions": string[] }`,
+      userPrompt: `Project files:\n${fileList}\n\nSample contents:\n${sampleContents}`,
+      jsonMode: true,
+    });
+
+    const result = JSON.parse(response.content);
+
+    return {
+      ...result,
+      tokensUsed: response.usage.totalTokens,
+      cost: response.cost,
+    };
+  }
+
+  /**
+   * Expand a brief prompt into a detailed specification
+   */
+  async expandPrompt(
+    briefPrompt: string
+  ): Promise<{ expandedPrompt: string; tokensUsed: number; cost: number }> {
+    const response = await this.ai.execute({
+      task: TaskType.REASONING,
+      systemPrompt: `You are expanding a brief project idea into a detailed specification.
+Include: features, pages, components, data models, and user flows.
+Keep it concise but comprehensive.`,
+      userPrompt: `Expand this project idea:\n\n${briefPrompt}`,
+    });
+
+    return {
+      expandedPrompt: response.content,
+      tokensUsed: response.usage.totalTokens,
+      cost: response.cost,
+    };
   }
 }

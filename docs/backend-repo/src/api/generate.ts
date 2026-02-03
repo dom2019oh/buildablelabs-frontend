@@ -1,12 +1,13 @@
 // =============================================================================
-// Generation API Routes
+// Generation API Routes - Extended with Credits & Refinement
 // =============================================================================
 
 import { Hono } from 'hono';
 import { z } from 'zod';
 import * as db from '../db/queries';
 import { aiLogger as logger } from '../utils/logger';
-import { GenerationPipeline } from '../services/ai/pipeline';
+import { GenerationPipeline, RefinementPipeline } from '../services/ai/pipeline';
+import { creditsMiddleware, deductCredits, estimateCredits } from '../middleware/credits';
 
 const app = new Hono();
 
@@ -19,15 +20,40 @@ const generateSchema = z.object({
   options: z.object({
     template: z.string().optional(),
     model: z.string().optional(),
+    framework: z.enum(['react', 'vue', 'svelte', 'node', 'django', 'react-native', 'flutter']).optional(),
+    maxValidationRetries: z.number().min(0).max(5).optional(),
   }).optional(),
+});
+
+const refineSchema = z.object({
+  prompt: z.string().min(1).max(10000),
+  previousContext: z.string().optional(),
 });
 
 // =============================================================================
 // ROUTES
 // =============================================================================
 
-// Start generation
-app.post('/:workspaceId', async (c) => {
+// Estimate credits for a generation
+app.post('/:workspaceId/estimate', async (c) => {
+  const body = await c.req.json();
+  const parsed = generateSchema.safeParse(body);
+  
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request', details: parsed.error.flatten() }, 400);
+  }
+
+  const estimate = estimateCredits(parsed.data.prompt);
+  
+  return c.json({
+    estimatedTokens: estimate.estimatedTokens,
+    estimatedCredits: estimate.estimatedCredits,
+    complexity: estimate.complexity,
+  });
+});
+
+// Start generation (with credits check)
+app.post('/:workspaceId', creditsMiddleware, async (c) => {
   const userId = c.get('userId');
   const workspaceId = c.req.param('workspaceId');
   const body = await c.req.json();
@@ -68,9 +94,20 @@ app.post('/:workspaceId', async (c) => {
     });
 
     // Start pipeline in background (don't await)
-    pipeline.run().catch((error) => {
-      logger.error({ error, sessionId: session.id }, 'Pipeline failed');
-    });
+    pipeline.run()
+      .then(async (result) => {
+        // Deduct credits after completion
+        if (result.totalTokens > 0) {
+          try {
+            await deductCredits(userId, result.totalTokens);
+          } catch (error) {
+            logger.error({ error, userId, sessionId: session.id }, 'Failed to deduct credits');
+          }
+        }
+      })
+      .catch((error) => {
+        logger.error({ error, sessionId: session.id }, 'Pipeline failed');
+      });
 
     return c.json({
       success: true,
@@ -81,6 +118,60 @@ app.post('/:workspaceId', async (c) => {
   } catch (error) {
     logger.error({ error, workspaceId }, 'Failed to start generation');
     return c.json({ error: 'Failed to start generation' }, 500);
+  }
+});
+
+// Refine existing generation
+app.post('/:workspaceId/refine', creditsMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const workspaceId = c.req.param('workspaceId');
+  const body = await c.req.json();
+
+  const parsed = refineSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Invalid request', details: parsed.error.flatten() }, 400);
+  }
+
+  const { prompt, previousContext } = parsed.data;
+
+  try {
+    const workspace = await db.getWorkspace(workspaceId, userId);
+    if (!workspace) {
+      return c.json({ error: 'Workspace not found' }, 404);
+    }
+
+    if (workspace.status === 'generating') {
+      return c.json({ error: 'Generation already in progress' }, 409);
+    }
+
+    const session = await db.createSession(workspaceId, userId, prompt);
+    await db.updateWorkspaceStatus(workspaceId, 'generating');
+
+    const pipeline = new RefinementPipeline();
+
+    pipeline.refine(session.id, workspaceId, userId, prompt, previousContext || '')
+      .then(async (result) => {
+        if (result.totalTokens > 0) {
+          try {
+            await deductCredits(userId, result.totalTokens);
+          } catch (error) {
+            logger.error({ error, userId }, 'Failed to deduct credits');
+          }
+        }
+      })
+      .catch((error) => {
+        logger.error({ error, sessionId: session.id }, 'Refinement failed');
+      });
+
+    return c.json({
+      success: true,
+      sessionId: session.id,
+      message: 'Refinement started. Subscribe to Realtime for updates.',
+    });
+
+  } catch (error) {
+    logger.error({ error, workspaceId }, 'Failed to start refinement');
+    return c.json({ error: 'Failed to start refinement' }, 500);
   }
 });
 
@@ -107,7 +198,7 @@ app.get('/session/:sessionId', async (c) => {
   }
 });
 
-// Cancel generation (if supported)
+// Cancel generation
 app.post('/session/:sessionId/cancel', async (c) => {
   const sessionId = c.req.param('sessionId');
 
