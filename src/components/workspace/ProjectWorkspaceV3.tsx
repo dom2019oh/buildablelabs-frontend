@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PanelLeft, Box, Eye, Loader2 } from 'lucide-react';
+import { PanelLeft, Eye, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useProject, useUpdateProject } from '@/hooks/useProjects';
@@ -20,7 +20,7 @@ import VersionHistoryPanel from './VersionHistoryPanel';
 import PublishDialog from './PublishDialog';
 import ThinkingIndicator from './ThinkingIndicator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Tabs removed - no longer used
 
 export default function ProjectWorkspaceV3() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -536,45 +536,38 @@ export default function ProjectWorkspaceV3() {
           ) : (
             /* Preview Panel */
             <div className="flex-1 h-full flex flex-col">
-              {/* Preview Mode Tabs */}
+              {/* Preview Header */}
               <div className="h-10 flex items-center justify-between px-3 border-b border-border bg-muted/30">
-                <Tabs value={previewMode} onValueChange={(v) => setPreviewMode(v as 'static' | 'sandbox')}>
-                  <TabsList className="h-7">
-                    <TabsTrigger value="static" className="text-xs px-3 h-6 gap-1.5">
-                      <Eye className="h-3 w-3" />
-                      Preview
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="sandbox" 
-                      className="text-xs px-3 h-6 gap-1.5"
-                      disabled={!webContainerSupported}
-                    >
-                      <Box className="h-3 w-3" />
-                      Sandbox
-                      {!webContainerSupported && <span className="text-[10px] opacity-60">(N/A)</span>}
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                <div className="flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Preview</span>
+                </div>
                 
-                {/* Generation Status */}
+                {/* Generation Status - Simple inline */}
                 {isGenerating && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>{phase.message}</span>
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Loader2 className="h-3 w-3" />
+                    </motion.div>
+                    <span>Building...</span>
                   </div>
                 )}
               </div>
               
               {/* Preview Content */}
               <div className="flex-1 overflow-hidden relative">
-                {/* Generation Overlay */}
+                {/* Simple Thinking Indicator - Bottom overlay */}
                 {isGenerating && (
-                  <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-                    <ThinkingIndicator 
-                      isVisible={true}
-                      taskType="generation"
-                      modelUsed={aiMetadata?.model}
-                    />
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+                    <div className="bg-background/95 backdrop-blur-sm border border-border rounded-full shadow-lg">
+                      <ThinkingIndicator 
+                        isVisible={true}
+                        taskType="generation"
+                      />
+                    </div>
                   </div>
                 )}
 
