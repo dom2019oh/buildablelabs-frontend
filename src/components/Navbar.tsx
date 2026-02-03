@@ -3,68 +3,63 @@ import { motion } from "framer-motion";
 import { Settings, BookOpen, HelpCircle, Users, LogOut, User } from "lucide-react";
 import buildableLogo from "@/assets/buildify-logo.png";
 import { useAuth } from "@/hooks/useAuth";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
-const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/docs", label: "Docs" },
-  { href: "/explore", label: "Explore" },
-];
-
+const navLinks = [{
+  href: "/",
+  label: "Home"
+}, {
+  href: "/pricing",
+  label: "Pricing"
+}, {
+  href: "/docs",
+  label: "Docs"
+}, {
+  href: "/explore",
+  label: "Explore"
+}];
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuth();
-
+  const {
+    user,
+    profile,
+    signOut
+  } = useAuth();
   const handleSignOut = async () => {
     await signOut();
     navigate("/");
   };
-
   const displayName = profile?.display_name || user?.email?.split("@")[0] || "User";
   const userEmail = user?.email || "";
   const avatarUrl = profile?.avatar_url;
   const initials = displayName.slice(0, 2).toUpperCase();
-
-  return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="fixed top-6 left-0 right-0 z-50 flex justify-center px-6"
-    >
+  return <motion.header initial={{
+    y: -20,
+    opacity: 0
+  }} animate={{
+    y: 0,
+    opacity: 1
+  }} transition={{
+    duration: 0.5
+  }} className="fixed top-6 left-0 right-0 z-50 flex justify-center px-6">
       <nav className="glass-nav w-full max-w-4xl px-6 py-2 flex items-center justify-between logo-shine overflow-hidden">
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2">
           <img src={buildableLogo} alt="Buildable" className="h-14 w-14 object-contain" />
-          <span className="text-base font-bold tracking-tight text-foreground" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Buildable</span>
+          <span className="text-base font-bold tracking-tight text-primary-foreground" style={{
+          fontFamily: "'Space Grotesk', sans-serif"
+        }}>Buildable</span>
         </Link>
 
         {/* Links and account on the right */}
         <div className="flex items-center gap-6">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              to={link.href}
-              className={`text-sm font-medium transition-colors duration-200 ${
-                location.pathname === link.href ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
+          {navLinks.map(link => <Link key={link.href} to={link.href} className={`text-sm font-medium transition-colors duration-200 ${location.pathname === link.href ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
               {link.label}
-            </Link>
-          ))}
+            </Link>)}
 
           {/* Account dropdown or login button */}
-          {user ? (
-            <DropdownMenu>
+          {user ? <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all">
                   <Avatar className="h-9 w-9 border border-border/50 hover:border-border transition-colors">
@@ -75,11 +70,7 @@ export default function Navbar() {
                   </Avatar>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent 
-                align="end" 
-                className="w-64 bg-popover border border-border shadow-lg z-[100]"
-                sideOffset={8}
-              >
+              <DropdownMenuContent align="end" className="w-64 bg-popover border border-border shadow-lg z-[100]" sideOffset={8}>
                 {/* User info header */}
                 <div className="px-3 py-3 border-b border-border">
                   <div className="flex items-center gap-3">
@@ -138,26 +129,16 @@ export default function Navbar() {
                 <DropdownMenuSeparator />
 
                 <div className="py-1">
-                  <DropdownMenuItem 
-                    onClick={handleSignOut}
-                    className="flex items-center gap-3 px-3 py-2 cursor-pointer text-destructive focus:text-destructive"
-                  >
+                  <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-3 px-3 py-2 cursor-pointer text-destructive focus:text-destructive">
                     <LogOut className="h-4 w-4" />
                     <span>Sign out</span>
                   </DropdownMenuItem>
                 </div>
               </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Link
-              to="/log-in"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
+            </DropdownMenu> : <Link to="/log-in" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               Log in
-            </Link>
-          )}
+            </Link>}
         </div>
       </nav>
-    </motion.header>
-  );
+    </motion.header>;
 }
