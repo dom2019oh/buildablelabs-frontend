@@ -478,22 +478,22 @@ serve(async (req) => {
       );
     }
 
-    // Check credits
-    const { data: hasCredits } = await supabase.rpc("user_has_credits", { p_user_id: user.id, p_amount: 0.10 });
-    if (hasCredits === false) {
-      return new Response(
-        JSON.stringify({ error: "Insufficient credits" }),
-        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Credits check - DISABLED FOR TESTING MODE
+    // const { data: hasCredits } = await supabase.rpc("user_has_credits", { p_user_id: user.id, p_amount: 0.10 });
+    // if (hasCredits === false) {
+    //   return new Response(
+    //     JSON.stringify({ error: "Insufficient credits" }),
+    //     { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    //   );
+    // }
 
-    // Deduct credits
-    await supabase.rpc("deduct_credits", {
-      p_user_id: user.id,
-      p_action_type: "ai_chat",
-      p_description: "Buildable generation",
-      p_metadata: { projectId, workspaceId: wsId }
-    });
+    // Deduct credits - DISABLED FOR TESTING MODE
+    // await supabase.rpc("deduct_credits", {
+    //   p_user_id: user.id,
+    //   p_action_type: "ai_chat",
+    //   p_description: "Buildable generation",
+    //   p_metadata: { projectId, workspaceId: wsId }
+    // });
 
     // Get existing workspace files if not provided
     let wsFiles = existingFiles;
