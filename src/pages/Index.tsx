@@ -3,8 +3,20 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Plus, MessageSquare } from "lucide-react";
 import FloatingLines from "@/components/FloatingLines";
+import RotatingText from "@/components/RotatingText";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
+
+const rotatingWords = [
+  "Website!",
+  "Game!",
+  "App!",
+  "Dashboard!",
+  "Portfolio!",
+  "Store!",
+  "Blog!",
+  "Tool!",
+];
 
 export default function Index() {
   const [prompt, setPrompt] = useState("");
@@ -41,12 +53,34 @@ export default function Index() {
         <Navbar />
 
         {/* Hero Section */}
-        <section className="min-h-screen flex flex-col items-center justify-center px-6 pt-24">
+        <section className="min-h-screen flex flex-col items-center justify-center px-6 pt-32">
+          {/* Rotating Text Header */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1, ease: "easeOut" }}
+            className="flex items-center gap-3 text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-12"
+          >
+            <span>Build a...</span>
+            <RotatingText
+              texts={rotatingWords}
+              mainClassName="px-3 sm:px-4 md:px-5 bg-zinc-900 text-white overflow-hidden py-1 sm:py-2 md:py-3 justify-center rounded-xl border border-border/50"
+              staggerFrom="last"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "-120%" }}
+              staggerDuration={0.025}
+              splitLevelClassName="overflow-hidden pb-0.5 sm:pb-1 md:pb-1"
+              transition={{ type: "spring", damping: 30, stiffness: 400 }}
+              rotationInterval={2000}
+            />
+          </motion.div>
+
           {/* Prompt Input Box */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.5, ease: "easeOut" }}
+            transition={{ duration: 1.5, ease: "easeOut", delay: 0.3 }}
             className="w-full max-w-2xl mx-auto"
           >
             <form onSubmit={handleSubmit} className="glass-card p-4 input-glow rounded-2xl">
