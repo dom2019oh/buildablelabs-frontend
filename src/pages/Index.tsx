@@ -127,7 +127,7 @@ export default function Index() {
             className="flex items-center gap-2 text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-6"
             style={{ fontFamily: "'Sora', sans-serif" }}
           >
-            <span>Build a...</span>
+            <span className="text-white">Build a...</span>
             <RotatingText
               texts={rotatingWords}
               mainClassName="px-2 sm:px-3 md:px-4 bg-zinc-900 text-white overflow-hidden py-1 sm:py-1.5 md:py-2 justify-center rounded-lg border border-border/50"
