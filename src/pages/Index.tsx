@@ -118,7 +118,7 @@ export default function Index() {
         <Navbar />
 
         {/* Hero Section */}
-        <section className={`flex flex-col items-center justify-center px-6 ${user ? 'pt-40 pb-24' : 'min-h-screen'}`}>
+        <section className={`flex flex-col items-center justify-center px-6 ${user ? 'pt-[280px] pb-64' : 'min-h-screen'}`}>
           {/* Rotating Text Header - Smaller */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
