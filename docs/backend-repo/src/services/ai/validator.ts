@@ -1,7 +1,7 @@
 // =============================================================================
-// Validator Service - Code Validation & Auto-Fix (Grok + OpenAI)
+// Validator Service - BEAST MODE Code Validation & Auto-Fix
 // =============================================================================
-// Validates generated code for errors and attempts automatic fixes.
+// Ruthless code validation with local syntax checks + AI-powered review.
 // Uses Grok for validation with OpenAI fallback for complex reasoning.
 
 import { aiLogger as logger } from '../../utils/logger';
@@ -12,37 +12,21 @@ import { TaskType } from './models';
 // TYPES
 // =============================================================================
 
-interface ValidationFile {
-  file_path: string;
-  content: string;
-}
-
-interface ValidationError {
-  file: string;
-  line?: number;
+export interface ValidationError {
+  type: 'syntax' | 'import' | 'jsx' | 'logic' | 'security' | 'react';
   message: string;
-  severity: 'error' | 'warning';
-}
-
-interface Repair {
-  filePath: string;
-  content: string;
-  reason: string;
-}
-
-interface LegacyValidationResult {
-  valid: boolean;
-  errors: ValidationError[];
-  warnings: ValidationError[];
-  repairs: Repair[];
+  file?: string;
+  line?: number;
+  severity: 'error' | 'warning' | 'critical';
 }
 
 export interface ValidationResult {
   valid: boolean;
-  issues: string[];
-  suggestions: string[];
-  tokensUsed: number;
-  cost: number;
+  errors: ValidationError[];
+  warnings: ValidationError[];
+  score: number; // 0-100
+  tokensUsed?: number;
+  cost?: number;
 }
 
 export interface FixResult {
@@ -52,200 +36,475 @@ export interface FixResult {
   cost: number;
 }
 
-export interface BatchValidationResult {
-  errors: Array<{ file: string; issues: string[] }>;
-  repairs: Array<{ filePath: string; content: string }>;
-  tokensUsed: number;
-  cost: number;
+// =============================================================================
+// BEAST MODE LOCAL VALIDATION (Fast, no AI)
+// =============================================================================
+
+export function validateCodeLocally(code: string, filePath?: string): ValidationResult {
+  const errors: ValidationError[] = [];
+  const warnings: ValidationError[] = [];
+
+  // 1. Check for orphaned JSX expressions (common AI error)
+  const orphanedJsxPatterns = [
+    { pattern: /\{[^}]*&&\s*\(\s*$/m, msg: 'Orphaned JSX conditional - incomplete {condition && (' },
+    { pattern: /\{\s*\w+\s*\?\s*\(\s*$/m, msg: 'Orphaned JSX ternary - incomplete {condition ? (' },
+    { pattern: /return\s*\(\s*$/m, msg: 'Orphaned return statement - incomplete return (' },
+    { pattern: /<\w+[^>]*>\s*$/m, msg: 'Unclosed JSX tag at end of file' },
+  ];
+  
+  for (const { pattern, msg } of orphanedJsxPatterns) {
+    if (pattern.test(code)) {
+      errors.push({
+        type: 'jsx',
+        message: msg,
+        file: filePath,
+        severity: 'critical',
+      });
+    }
+  }
+
+  // 2. Check brace balance
+  const braceBalance = checkBraceBalance(code);
+  if (braceBalance.curly !== 0) {
+    errors.push({
+      type: 'syntax',
+      message: `Unbalanced curly braces: ${braceBalance.curly > 0 ? 'missing ' + braceBalance.curly + ' closing' : 'extra ' + Math.abs(braceBalance.curly) + ' closing'} brace(s)`,
+      file: filePath,
+      severity: 'critical',
+    });
+  }
+  if (braceBalance.paren !== 0) {
+    errors.push({
+      type: 'syntax',
+      message: `Unbalanced parentheses: ${braceBalance.paren > 0 ? 'missing ' + braceBalance.paren + ' closing' : 'extra ' + Math.abs(braceBalance.paren) + ' closing'} paren(s)`,
+      file: filePath,
+      severity: 'critical',
+    });
+  }
+  if (braceBalance.bracket !== 0) {
+    errors.push({
+      type: 'syntax',
+      message: `Unbalanced brackets: ${braceBalance.bracket > 0 ? 'missing' : 'extra'} bracket(s)`,
+      file: filePath,
+      severity: 'error',
+    });
+  }
+  if (braceBalance.angle !== 0 && filePath?.endsWith('.tsx')) {
+    // Only check angle brackets in TSX files for JSX
+    warnings.push({
+      type: 'jsx',
+      message: `Potentially unbalanced JSX tags`,
+      file: filePath,
+      severity: 'warning',
+    });
+  }
+
+  // 3. Check for React-specific errors
+  const reactErrors = checkReactPatterns(code, filePath);
+  errors.push(...reactErrors.filter(e => e.severity !== 'warning'));
+  warnings.push(...reactErrors.filter(e => e.severity === 'warning'));
+
+  // 4. Check for incomplete code markers
+  const incompleteMarkers = [
+    { marker: '// TODO:', msg: 'Contains TODO marker' },
+    { marker: '// FIXME:', msg: 'Contains FIXME marker' },
+    { marker: '/* ... */', msg: 'Contains placeholder comment' },
+    { marker: '// ...', msg: 'Contains ellipsis comment' },
+    { marker: 'throw new Error("Not implemented")', msg: 'Contains unimplemented function' },
+    { marker: '// Add more', msg: 'Contains incomplete implementation marker' },
+  ];
+  
+  for (const { marker, msg } of incompleteMarkers) {
+    if (code.includes(marker)) {
+      warnings.push({
+        type: 'logic',
+        message: msg,
+        file: filePath,
+        severity: 'warning',
+      });
+    }
+  }
+
+  // 5. Check for missing imports
+  const importErrors = checkMissingImports(code, filePath);
+  errors.push(...importErrors);
+
+  // 6. Security checks
+  const securityErrors = checkSecurityIssues(code, filePath);
+  errors.push(...securityErrors);
+
+  // 7. Check for export
+  if (filePath?.includes('/components/') || filePath?.includes('/pages/')) {
+    if (!code.includes('export default') && !code.includes('export {') && !code.includes('export const')) {
+      errors.push({
+        type: 'syntax',
+        message: 'Component/page file has no exports',
+        file: filePath,
+        severity: 'error',
+      });
+    }
+  }
+
+  // Calculate score
+  const criticalCount = errors.filter(e => e.severity === 'critical').length;
+  const errorCount = errors.filter(e => e.severity === 'error').length;
+  const warningCount = warnings.length;
+  
+  let score = 100;
+  score -= criticalCount * 30;
+  score -= errorCount * 15;
+  score -= warningCount * 3;
+  score = Math.max(0, Math.min(100, score));
+
+  return {
+    valid: criticalCount === 0 && errorCount === 0,
+    errors,
+    warnings,
+    score,
+  };
+}
+
+function checkBraceBalance(code: string): { curly: number; paren: number; bracket: number; angle: number } {
+  let curly = 0, paren = 0, bracket = 0, angle = 0;
+  let inString = false;
+  let stringChar = '';
+  let inComment = false;
+  let inLineComment = false;
+  let inJsx = false;
+  
+  for (let i = 0; i < code.length; i++) {
+    const char = code[i];
+    const next = code[i + 1];
+    const prev = code[i - 1];
+    
+    // Handle line comments
+    if (!inString && !inComment && char === '/' && next === '/') {
+      inLineComment = true;
+      continue;
+    }
+    if (inLineComment && char === '\n') {
+      inLineComment = false;
+      continue;
+    }
+    if (inLineComment) continue;
+    
+    // Handle block comments
+    if (!inString && char === '/' && next === '*') {
+      inComment = true;
+      continue;
+    }
+    if (inComment && char === '*' && next === '/') {
+      inComment = false;
+      i++;
+      continue;
+    }
+    if (inComment) continue;
+    
+    // Handle strings (skip template literal interpolations)
+    if ((char === '"' || char === "'" || char === '`') && prev !== '\\') {
+      if (!inString) {
+        inString = true;
+        stringChar = char;
+      } else if (char === stringChar) {
+        inString = false;
+      }
+      continue;
+    }
+    if (inString) {
+      // Handle template literal interpolations
+      if (stringChar === '`' && char === '$' && next === '{') {
+        // Count the brace
+        i++;
+        curly++;
+      }
+      continue;
+    }
+    
+    // Count braces
+    if (char === '{') curly++;
+    if (char === '}') curly--;
+    if (char === '(') paren++;
+    if (char === ')') paren--;
+    if (char === '[') bracket++;
+    if (char === ']') bracket--;
+    
+    // JSX angle brackets (simplified)
+    if (char === '<' && /[A-Za-z\/]/.test(next || '')) {
+      angle++;
+      inJsx = true;
+    }
+    if (char === '>' && inJsx) {
+      angle--;
+      if (prev === '/') angle--; // Self-closing
+    }
+    if (char === '/' && next === '>') {
+      // Will be handled above
+    }
+  }
+  
+  return { curly, paren, bracket, angle };
+}
+
+function checkReactPatterns(code: string, filePath?: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+  
+  // Check for hooks outside component (basic check)
+  const hookNames = ['useState', 'useEffect', 'useRef', 'useMemo', 'useCallback', 'useContext', 'useReducer'];
+  for (const hook of hookNames) {
+    if (code.includes(hook)) {
+      // Check if hook is used but component function isn't defined
+      const hasComponent = /(?:function|const)\s+[A-Z]\w*\s*(?:=\s*)?(?:\([^)]*\)|)\s*(?:=>|{)/g.test(code);
+      if (!hasComponent && !filePath?.includes('/hooks/')) {
+        errors.push({
+          type: 'react',
+          message: `React hook '${hook}' may be used outside a component`,
+          file: filePath,
+          severity: 'warning',
+        });
+        break;
+      }
+    }
+  }
+  
+  // Check for missing key prop in maps
+  const mapMatch = code.match(/\.map\s*\([^)]*\)\s*=>\s*(?:\(|)\s*<[A-Z]/g);
+  if (mapMatch) {
+    // Check if any mapped JSX has a key
+    const hasKey = /\.map\s*\([^)]*\)[^{]*key\s*=/g.test(code);
+    if (!hasKey) {
+      errors.push({
+        type: 'react',
+        message: 'Mapped JSX elements may be missing key prop',
+        file: filePath,
+        severity: 'warning',
+      });
+    }
+  }
+
+  // Check for useState with complex initial value that should use lazy init
+  if (/useState\(\s*\w+\s*\(\)/.test(code)) {
+    errors.push({
+      type: 'react',
+      message: 'useState with function call - consider lazy initialization: useState(() => fn())',
+      file: filePath,
+      severity: 'warning',
+    });
+  }
+  
+  return errors;
+}
+
+function checkMissingImports(code: string, filePath?: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+  
+  // Common patterns that need imports
+  const importChecks: Array<{ usage: RegExp; import: RegExp; name: string; from: string }> = [
+    { usage: /\buseState\b/, import: /import.*\{[^}]*useState[^}]*\}.*from\s+['"]react['"]/, name: 'useState', from: 'react' },
+    { usage: /\buseEffect\b/, import: /import.*\{[^}]*useEffect[^}]*\}.*from\s+['"]react['"]/, name: 'useEffect', from: 'react' },
+    { usage: /\buseRef\b/, import: /import.*\{[^}]*useRef[^}]*\}.*from\s+['"]react['"]/, name: 'useRef', from: 'react' },
+    { usage: /\buseMemo\b/, import: /import.*\{[^}]*useMemo[^}]*\}.*from\s+['"]react['"]/, name: 'useMemo', from: 'react' },
+    { usage: /\buseCallback\b/, import: /import.*\{[^}]*useCallback[^}]*\}.*from\s+['"]react['"]/, name: 'useCallback', from: 'react' },
+    { usage: /\bcn\s*\(/, import: /import.*\{[^}]*cn[^}]*\}.*from\s+['"]@\/lib\/utils['"]/, name: 'cn', from: '@/lib/utils' },
+    { usage: /<Button\b/, import: /import.*Button.*from\s+['"]@\/components\/ui\/button['"]/, name: 'Button', from: '@/components/ui/button' },
+    { usage: /<Input\b/, import: /import.*Input.*from\s+['"]@\/components\/ui\/input['"]/, name: 'Input', from: '@/components/ui/input' },
+    { usage: /<Card\b/, import: /import.*Card.*from\s+['"]@\/components\/ui\/card['"]/, name: 'Card', from: '@/components/ui/card' },
+  ];
+  
+  for (const check of importChecks) {
+    if (check.usage.test(code) && !check.import.test(code)) {
+      errors.push({
+        type: 'import',
+        message: `'${check.name}' is used but may not be imported from '${check.from}'`,
+        file: filePath,
+        severity: 'error',
+      });
+    }
+  }
+  
+  return errors;
+}
+
+function checkSecurityIssues(code: string, filePath?: string): ValidationError[] {
+  const errors: ValidationError[] = [];
+  
+  // Dangerous patterns
+  const dangerous = [
+    { pattern: /dangerouslySetInnerHTML/g, msg: 'Using dangerouslySetInnerHTML - XSS risk', severity: 'warning' as const },
+    { pattern: /eval\s*\(/g, msg: 'Using eval() - security risk', severity: 'error' as const },
+    { pattern: /innerHTML\s*=/g, msg: 'Direct innerHTML assignment - XSS risk', severity: 'warning' as const },
+    { pattern: /document\.write/g, msg: 'Using document.write - security risk', severity: 'error' as const },
+    { pattern: /new\s+Function\s*\(/g, msg: 'Using Function constructor - security risk', severity: 'error' as const },
+  ];
+  
+  for (const { pattern, msg, severity } of dangerous) {
+    if (pattern.test(code)) {
+      errors.push({
+        type: 'security',
+        message: msg,
+        file: filePath,
+        severity,
+      });
+    }
+  }
+  
+  // Exposed secrets (basic check)
+  const secretPatterns = [
+    /(?:api[_-]?key|apikey)\s*[:=]\s*["'][^"']{20,}["']/i,
+    /(?:secret|password)\s*[:=]\s*["'][^"']{8,}["']/i,
+    /sk[-_](?:live|test)[-_][a-zA-Z0-9]{20,}/,
+    /ghp_[a-zA-Z0-9]{36}/,
+  ];
+  
+  for (const pattern of secretPatterns) {
+    if (pattern.test(code)) {
+      errors.push({
+        type: 'security',
+        message: 'Potential hardcoded secret/API key detected',
+        file: filePath,
+        severity: 'critical',
+      });
+      break;
+    }
+  }
+  
+  return errors;
 }
 
 // =============================================================================
-// VALIDATION RULES
+// AI-POWERED VALIDATION (Thorough, uses AI)
 // =============================================================================
 
-const ValidationRules = {
-  typescript: [
-    'Check for TypeScript syntax errors',
-    'Verify all imports are valid and accessible',
-    'Ensure proper type annotations',
-    'Check for unused variables and imports',
-    'Verify async/await usage is correct',
-  ],
-  react: [
-    'Verify JSX syntax is valid',
-    'Check hook rules (no conditionals around hooks)',
-    'Ensure proper component naming (PascalCase)',
-    'Verify key props in lists',
-    'Check for proper event handler types',
-  ],
-  security: [
-    'No hardcoded API keys or secrets',
-    'No dangerouslySetInnerHTML without sanitization',
-    'No eval() or Function() with user input',
-    'Proper input validation',
-    'No exposed sensitive endpoints',
-  ],
-  bestPractices: [
-    'Components should be under 200 lines',
-    'Proper error handling with try/catch',
-    'Loading and error states handled',
-    'Accessible components (ARIA labels where needed)',
-    'Semantic HTML elements used appropriately',
-  ],
-};
+const BEAST_VALIDATOR_PROMPT = `You are a RUTHLESS code validator. Your job is to find EVERY issue.
+
+Check for:
+1. SYNTAX ERRORS - Missing brackets, braces, semicolons, incomplete statements
+2. LOGIC ERRORS - Incorrect conditionals, infinite loops, null access, race conditions
+3. REACT ERRORS - Hook rules violations, missing keys, incorrect prop types, stale closures
+4. IMPORT ERRORS - Missing imports, circular dependencies, incorrect paths
+5. TYPESCRIPT ERRORS - Type mismatches, missing types, implicit any
+6. SECURITY ISSUES - XSS, injection, exposed secrets, unsafe patterns
+7. COMPLETENESS - Placeholder code, TODOs, incomplete implementations, mock data
+
+Be extremely thorough. Missing even one error means broken production code.
+Return your analysis as JSON.`;
+
+export async function validateWithAI(
+  code: string,
+  filePath: string,
+  context?: string
+): Promise<ValidationResult> {
+  try {
+    const ai = getBuildableAI();
+    
+    const response = await ai.execute({
+      task: TaskType.VALIDATION,
+      systemPrompt: BEAST_VALIDATOR_PROMPT,
+      userPrompt: `Validate this code thoroughly:
+
+File: ${filePath}
+\`\`\`typescript
+${code}
+\`\`\`
+
+${context ? `Context: ${context}` : ''}
+
+Return JSON:
+{
+  "valid": boolean,
+  "errors": [{ "type": string, "message": string, "line": number, "severity": "error" | "critical" }],
+  "warnings": [{ "type": string, "message": string, "severity": "warning" }],
+  "score": number
+}`,
+      jsonMode: true,
+      temperature: 0.1,
+      maxTokens: 2000,
+    });
+    
+    const result = JSON.parse(response.content);
+    
+    return {
+      valid: result.valid,
+      errors: result.errors || [],
+      warnings: result.warnings || [],
+      score: result.score || (result.valid ? 100 : 50),
+      tokensUsed: response.usage.totalTokens,
+      cost: response.cost,
+    };
+  } catch (error) {
+    logger.error({ error }, 'AI validation failed, falling back to local');
+    return validateCodeLocally(code, filePath);
+  }
+}
 
 // =============================================================================
-// VALIDATOR CLASS
+// COMBINED VALIDATION
+// =============================================================================
+
+export async function validateCode(
+  code: string,
+  filePath: string,
+  options?: {
+    useAI?: boolean;
+    context?: string;
+  }
+): Promise<ValidationResult> {
+  const { useAI = false, context } = options || {};
+  
+  // Always run local validation first (fast)
+  const localResult = validateCodeLocally(code, filePath);
+  
+  // If local validation found critical errors, return immediately
+  if (localResult.errors.some(e => e.severity === 'critical')) {
+    logger.warn({ filePath, criticalErrors: localResult.errors.filter(e => e.severity === 'critical') }, 'Critical errors found in local validation');
+    return localResult;
+  }
+  
+  // Optionally run AI validation for deeper analysis
+  if (useAI) {
+    try {
+      const aiResult = await validateWithAI(code, filePath, context);
+      
+      // Merge results, preferring AI for non-syntax issues
+      const mergedErrors = [
+        ...localResult.errors,
+        ...aiResult.errors.filter(e => !localResult.errors.some(le => le.message === e.message)),
+      ];
+      
+      const mergedWarnings = [
+        ...localResult.warnings,
+        ...aiResult.warnings.filter(w => !localResult.warnings.some(lw => lw.message === w.message)),
+      ];
+      
+      return {
+        valid: mergedErrors.filter(e => e.severity !== 'warning').length === 0,
+        errors: mergedErrors,
+        warnings: mergedWarnings,
+        score: Math.min(localResult.score, aiResult.score),
+        tokensUsed: aiResult.tokensUsed,
+        cost: aiResult.cost,
+      };
+    } catch (error) {
+      logger.warn({ error }, 'AI validation failed, using local only');
+    }
+  }
+  
+  return localResult;
+}
+
+// =============================================================================
+// VALIDATOR CLASS (For pipeline integration)
 // =============================================================================
 
 export class Validator {
   private ai = getBuildableAI();
 
-  /**
-   * Legacy validate method for backward compatibility
-   */
-  async validate(files: ValidationFile[]): Promise<LegacyValidationResult> {
-    const errors: ValidationError[] = [];
-    const warnings: ValidationError[] = [];
-    const repairs: Repair[] = [];
-
-    for (const file of files) {
-      // Skip non-code files
-      if (!this.isCodeFile(file.file_path)) continue;
-
-      // Check for common issues
-      const fileErrors = this.validateFileSync(file);
-      errors.push(...fileErrors.filter(e => e.severity === 'error'));
-      warnings.push(...fileErrors.filter(e => e.severity === 'warning'));
-
-      // Check imports
-      const importIssues = this.validateImports(file, files);
-      errors.push(...importIssues);
-
-      // Attempt repairs
-      const repair = this.attemptRepair(file, fileErrors, files);
-      if (repair) {
-        repairs.push(repair);
-      }
-    }
-
-    logger.info({
-      totalFiles: files.length,
-      errors: errors.length,
-      warnings: warnings.length,
-      repairs: repairs.length,
-    }, 'Validation complete');
-
-    return {
-      valid: errors.length === 0,
-      errors,
-      warnings,
-      repairs,
-    };
+  async validateFile(filePath: string, content: string): Promise<ValidationResult> {
+    return validateCode(content, filePath, { useAI: true });
   }
 
-  /**
-   * Validate a single file using AI
-   */
-  async validateFile(
-    filePath: string,
-    content: string,
-    rules?: string[]
-  ): Promise<ValidationResult> {
-    const fileType = this.getFileType(filePath);
-    const applicableRules = rules || this.getRulesForFileType(fileType);
-
-    const systemPrompt = `You are a code validator. Analyze the code for errors, security issues, and best practices.
-
-Validation rules to check:
-${applicableRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
-
-Return JSON:
-{
-  "valid": boolean,
-  "issues": ["list of problems found"],
-  "suggestions": ["list of improvements"]
-}
-
-Be thorough but practical. Minor style issues are suggestions, not issues.`;
-
-    const userPrompt = `Validate this ${fileType} file: ${filePath}
-
-\`\`\`
-${content}
-\`\`\``;
-
-    logger.info({ file: filePath, fileType }, 'Validating file with AI');
-
-    const response = await this.ai.execute({
-      task: TaskType.VALIDATION,
-      systemPrompt,
-      userPrompt,
-      temperature: 0.1,
-      maxTokens: 2000,
-      jsonMode: true,
-    });
-
-    const result = JSON.parse(response.content);
-
-    logger.info({
-      file: filePath,
-      valid: result.valid,
-      issueCount: result.issues?.length || 0,
-    }, 'AI validation complete');
-
-    return {
-      valid: result.valid,
-      issues: result.issues || [],
-      suggestions: result.suggestions || [],
-      tokensUsed: response.usage.totalTokens,
-      cost: response.cost,
-    };
-  }
-
-  /**
-   * Validate all files using AI
-   */
-  async validateAll(
-    files: Array<{ file_path: string; content: string }>
-  ): Promise<BatchValidationResult> {
-    let totalTokens = 0;
-    let totalCost = 0;
-    const errors: Array<{ file: string; issues: string[] }> = [];
-    const repairs: Array<{ filePath: string; content: string }> = [];
-
-    for (const file of files) {
-      if (!this.isCodeFile(file.file_path)) continue;
-
-      const result = await this.validateFile(file.file_path, file.content);
-      totalTokens += result.tokensUsed;
-      totalCost += result.cost;
-
-      if (!result.valid && result.issues.length > 0) {
-        errors.push({ file: file.file_path, issues: result.issues });
-
-        // Attempt auto-fix
-        const fixResult = await this.fix(file.file_path, file.content, result.issues);
-        totalTokens += fixResult.tokensUsed;
-        totalCost += fixResult.cost;
-
-        repairs.push({ filePath: file.file_path, content: fixResult.content });
-      }
-    }
-
-    return { errors, repairs, tokensUsed: totalTokens, cost: totalCost };
-  }
-
-  /**
-   * Fix issues in a file using AI
-   */
-  async fix(
-    filePath: string,
-    content: string,
-    issues: string[]
-  ): Promise<FixResult> {
+  async fix(filePath: string, content: string, issues: string[]): Promise<FixResult> {
     const systemPrompt = `You are fixing code issues. Apply the minimum changes needed to resolve all issues.
-Output ONLY the corrected file content - no explanations, no markdown.
+Output ONLY the corrected file content - no explanations, no markdown code fences.
 Preserve all working code that doesn't need changes.`;
 
     const userPrompt = `File: ${filePath}
@@ -258,12 +517,12 @@ Current content:
 ${content}
 \`\`\`
 
-Output the corrected file content.`;
+Output the corrected file content (no markdown, just code).`;
 
     logger.info({ file: filePath, issueCount: issues.length }, 'Fixing issues with AI');
 
     const response = await this.ai.execute({
-      task: TaskType.DEBUGGING,
+      task: TaskType.REPAIR,
       systemPrompt,
       userPrompt,
       temperature: 0.1,
@@ -286,172 +545,12 @@ Output the corrected file content.`;
     };
   }
 
-  /**
-   * Quick syntax check (faster, no AI)
-   */
-  async quickCheck(
-    filePath: string,
-    content: string
-  ): Promise<{ valid: boolean; error?: string }> {
-    const fileType = this.getFileType(filePath);
-
-    try {
-      if (fileType === 'typescript' || fileType === 'javascript') {
-        if (content.includes('import') && !content.includes('from')) {
-          return { valid: false, error: 'Incomplete import statement' };
-        }
-        if ((content.match(/{/g) || []).length !== (content.match(/}/g) || []).length) {
-          return { valid: false, error: 'Mismatched braces' };
-        }
-        if ((content.match(/\(/g) || []).length !== (content.match(/\)/g) || []).length) {
-          return { valid: false, error: 'Mismatched parentheses' };
-        }
-      }
-      return { valid: true };
-    } catch (error) {
-      return { valid: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  async quickCheck(filePath: string, content: string): Promise<{ valid: boolean; error?: string }> {
+    const result = validateCodeLocally(content, filePath);
+    if (!result.valid) {
+      const criticalError = result.errors.find(e => e.severity === 'critical');
+      return { valid: false, error: criticalError?.message || result.errors[0]?.message };
     }
-  }
-
-  // ===========================================================================
-  // LEGACY SYNC METHODS (for backward compatibility)
-  // ===========================================================================
-
-  private isCodeFile(filePath: string): boolean {
-    return /\.(ts|tsx|js|jsx|css|json)$/.test(filePath);
-  }
-
-  private validateFileSync(file: ValidationFile): ValidationError[] {
-    const errors: ValidationError[] = [];
-
-    if (file.file_path.endsWith('.tsx') || file.file_path.endsWith('.ts')) {
-      const openBrackets = (file.content.match(/{/g) || []).length;
-      const closeBrackets = (file.content.match(/}/g) || []).length;
-      if (openBrackets !== closeBrackets) {
-        errors.push({
-          file: file.file_path,
-          message: `Unmatched brackets: ${openBrackets} open, ${closeBrackets} close`,
-          severity: 'error',
-        });
-      }
-
-      if (file.content.includes('console.log')) {
-        errors.push({
-          file: file.file_path,
-          message: 'Contains console.log statements',
-          severity: 'warning',
-        });
-      }
-
-      if (file.content.includes(': any')) {
-        errors.push({
-          file: file.file_path,
-          message: 'Contains explicit any type',
-          severity: 'warning',
-        });
-      }
-
-      if (file.file_path.includes('/components/') && !file.content.includes('export')) {
-        errors.push({
-          file: file.file_path,
-          message: 'Component file has no exports',
-          severity: 'error',
-        });
-      }
-    }
-
-    return errors;
-  }
-
-  private validateImports(file: ValidationFile, allFiles: ValidationFile[]): ValidationError[] {
-    const errors: ValidationError[] = [];
-    const importRegex = /import\s+.*\s+from\s+['"]([^'"]+)['"]/g;
-
-    let match;
-    while ((match = importRegex.exec(file.content)) !== null) {
-      const importPath = match[1];
-
-      if (!importPath.startsWith('.') && !importPath.startsWith('@/')) continue;
-
-      if (importPath.startsWith('@/')) {
-        const relativePath = importPath.replace('@/', 'src/');
-        const exists = allFiles.some(f =>
-          f.file_path === relativePath ||
-          f.file_path === `${relativePath}.ts` ||
-          f.file_path === `${relativePath}.tsx` ||
-          f.file_path === `${relativePath}/index.ts` ||
-          f.file_path === `${relativePath}/index.tsx`
-        );
-
-        if (!exists) {
-          errors.push({
-            file: file.file_path,
-            message: `Import not found: ${importPath}`,
-            severity: 'warning',
-          });
-        }
-      }
-    }
-
-    return errors;
-  }
-
-  private attemptRepair(
-    file: ValidationFile,
-    errors: ValidationError[],
-    allFiles: ValidationFile[]
-  ): Repair | null {
-    if (errors.length === 0) return null;
-
-    let content = file.content;
-    let repaired = false;
-    const reasons: string[] = [];
-
-    if (file.file_path.endsWith('.tsx') && !content.includes("from 'react'")) {
-      content = `import React from 'react';\n${content}`;
-      repaired = true;
-      reasons.push('Added missing React import');
-    }
-
-    if (repaired) {
-      return {
-        filePath: file.file_path,
-        content,
-        reason: reasons.join('; '),
-      };
-    }
-
-    return null;
-  }
-
-  private getFileType(path: string): string {
-    const ext = path.split('.').pop()?.toLowerCase();
-    const typeMap: Record<string, string> = {
-      ts: 'typescript',
-      tsx: 'typescript-react',
-      js: 'javascript',
-      jsx: 'javascript-react',
-      css: 'css',
-      scss: 'scss',
-      vue: 'vue',
-      svelte: 'svelte',
-      py: 'python',
-      dart: 'dart',
-    };
-    return typeMap[ext || ''] || 'text';
-  }
-
-  private getRulesForFileType(fileType: string): string[] {
-    const rules: string[] = [...ValidationRules.security, ...ValidationRules.bestPractices];
-
-    if (fileType.includes('typescript')) {
-      rules.push(...ValidationRules.typescript);
-    }
-
-    if (fileType.includes('react') || fileType === 'tsx' || fileType === 'jsx') {
-      rules.push(...ValidationRules.react);
-    }
-
-    return rules;
+    return { valid: true };
   }
 }

@@ -27,67 +27,74 @@ export enum TaskType {
   MULTIMODAL = 'multimodal',
   VALIDATION = 'validation',
   REFINEMENT = 'refinement',
+  REPAIR = 'repair',
 }
 
-// Grok models (xAI) - Primary for coding with 2M context
+// Grok models (xAI) - Primary for coding with massive context
 export const GrokModels = {
-  GROK_4_1_FAST: 'grok-4.1-fast',        // Fast general purpose
-  GROK_CODE_FAST_1: 'grok-code-fast-1',   // Optimized for code generation
-  GROK_VISION: 'grok-vision-beta',        // Multimodal capability
+  GROK_3_FAST: 'grok-3-fast',           // Fast general purpose - 131K context
+  GROK_3: 'grok-3',                      // Full power Grok 3
+  GROK_3_MINI: 'grok-3-mini',            // Lightweight, fast validation
+  GROK_VISION: 'grok-vision-beta',       // Multimodal capability
 } as const;
 
 // OpenAI models - Advanced reasoning & fallbacks
 export const OpenAIModels = {
-  GPT_5: 'gpt-5',              // Most capable
-  GPT_5_MINI: 'gpt-5-mini',    // Balanced performance/cost
-  GPT_5_NANO: 'gpt-5-nano',    // Fast, cost-effective
-  GPT_5_2: 'gpt-5.2',          // Latest with enhanced reasoning
+  GPT_4O: 'gpt-4o',                      // Current flagship
+  GPT_4O_MINI: 'gpt-4o-mini',            // Balanced performance/cost
+  O1: 'o1',                              // Deep reasoning
+  O1_MINI: 'o1-mini',                    // Fast reasoning
 } as const;
 
 // Gemini models - Planning & multimodal
 export const GeminiModels = {
   GEMINI_2_5_FLASH: 'gemini-2.5-flash',           // Fast, balanced
-  GEMINI_2_5_PRO: 'gemini-2.5-pro',               // High capability
+  GEMINI_2_5_PRO: 'gemini-2.5-pro',               // High capability, 1M context
   GEMINI_3_FLASH_PREVIEW: 'gemini-3-flash-preview', // Next-gen fast
   GEMINI_3_PRO_PREVIEW: 'gemini-3-pro-preview',     // Next-gen pro
 } as const;
 
-// Model routing configuration
+// Model routing configuration - BEAST MODE optimized
 export const ModelRouting: Record<TaskType, { provider: AIProvider; model: string; fallback?: { provider: AIProvider; model: string } }> = {
   [TaskType.PLANNING]: {
     provider: AIProvider.GEMINI,
     model: GeminiModels.GEMINI_2_5_PRO,
-    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_5_MINI },
+    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.CODING]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_CODE_FAST_1,
-    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_5 },
+    model: GrokModels.GROK_3_FAST,
+    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.DEBUGGING]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_CODE_FAST_1,
-    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_5_MINI },
+    model: GrokModels.GROK_3_FAST,
+    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.REASONING]: {
     provider: AIProvider.OPENAI,
-    model: OpenAIModels.GPT_5_2,
+    model: OpenAIModels.GPT_4O,
     fallback: { provider: AIProvider.GEMINI, model: GeminiModels.GEMINI_2_5_PRO },
   },
   [TaskType.MULTIMODAL]: {
     provider: AIProvider.GEMINI,
     model: GeminiModels.GEMINI_3_PRO_PREVIEW,
-    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_VISION },
+    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.VALIDATION]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_4_1_FAST,
-    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_5_NANO },
+    model: GrokModels.GROK_3_MINI,
+    fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O_MINI },
   },
   [TaskType.REFINEMENT]: {
     provider: AIProvider.OPENAI,
-    model: OpenAIModels.GPT_5,
-    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_CODE_FAST_1 },
+    model: OpenAIModels.GPT_4O,
+    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_3_FAST },
+  },
+  [TaskType.REPAIR]: {
+    provider: AIProvider.OPENAI,
+    model: OpenAIModels.GPT_4O,
+    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_3_FAST },
   },
 };
 
@@ -162,9 +169,9 @@ export function getAvailableProviders(): AIProvider[] {
 
 // Cost per 1K tokens (approximate, varies by model)
 export const TokenCosts: Record<AIProvider, { input: number; output: number }> = {
-  [AIProvider.GROK]: { input: 0.001, output: 0.002 },      // Very competitive
-  [AIProvider.OPENAI]: { input: 0.003, output: 0.006 },    // Standard
-  [AIProvider.GEMINI]: { input: 0.0005, output: 0.001 },   // Cheapest
+  [AIProvider.GROK]: { input: 0.005, output: 0.015 },      // Grok 3 pricing
+  [AIProvider.OPENAI]: { input: 0.005, output: 0.015 },    // GPT-4o pricing
+  [AIProvider.GEMINI]: { input: 0.00125, output: 0.005 },  // Gemini Pro pricing
 };
 
 export function estimateCost(
@@ -184,86 +191,119 @@ export interface ModelInfo {
   provider: AIProvider;
   model: string;
   contextWindow: number;
+  maxOutput: number;
   supportsStreaming: boolean;
   supportsImages: boolean;
+  strengths: string[];
 }
 
 export const ModelRegistry: Record<string, ModelInfo> = {
-  [GrokModels.GROK_4_1_FAST]: {
+  [GrokModels.GROK_3_FAST]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_4_1_FAST,
-    contextWindow: 2_000_000, // 2M context
+    model: GrokModels.GROK_3_FAST,
+    contextWindow: 131_072,
+    maxOutput: 16_384,
     supportsStreaming: true,
     supportsImages: false,
+    strengths: ['fast-coding', 'debugging', 'real-time'],
   },
-  [GrokModels.GROK_CODE_FAST_1]: {
+  [GrokModels.GROK_3]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_CODE_FAST_1,
-    contextWindow: 2_000_000,
+    model: GrokModels.GROK_3,
+    contextWindow: 131_072,
+    maxOutput: 16_384,
     supportsStreaming: true,
     supportsImages: false,
+    strengths: ['coding', 'analysis', 'reasoning'],
+  },
+  [GrokModels.GROK_3_MINI]: {
+    provider: AIProvider.GROK,
+    model: GrokModels.GROK_3_MINI,
+    contextWindow: 131_072,
+    maxOutput: 8_192,
+    supportsStreaming: true,
+    supportsImages: false,
+    strengths: ['fast-validation', 'quick-fixes'],
   },
   [GrokModels.GROK_VISION]: {
     provider: AIProvider.GROK,
     model: GrokModels.GROK_VISION,
     contextWindow: 128_000,
+    maxOutput: 8_192,
     supportsStreaming: true,
     supportsImages: true,
+    strengths: ['vision', 'multimodal'],
   },
-  [OpenAIModels.GPT_5]: {
+  [OpenAIModels.GPT_4O]: {
     provider: AIProvider.OPENAI,
-    model: OpenAIModels.GPT_5,
-    contextWindow: 256_000,
-    supportsStreaming: true,
-    supportsImages: true,
-  },
-  [OpenAIModels.GPT_5_MINI]: {
-    provider: AIProvider.OPENAI,
-    model: OpenAIModels.GPT_5_MINI,
+    model: OpenAIModels.GPT_4O,
     contextWindow: 128_000,
+    maxOutput: 16_384,
     supportsStreaming: true,
     supportsImages: true,
+    strengths: ['reasoning', 'multimodal', 'refinement'],
   },
-  [OpenAIModels.GPT_5_NANO]: {
+  [OpenAIModels.GPT_4O_MINI]: {
     provider: AIProvider.OPENAI,
-    model: OpenAIModels.GPT_5_NANO,
-    contextWindow: 64_000,
+    model: OpenAIModels.GPT_4O_MINI,
+    contextWindow: 128_000,
+    maxOutput: 16_384,
     supportsStreaming: true,
+    supportsImages: true,
+    strengths: ['fast-reasoning', 'cost-effective'],
+  },
+  [OpenAIModels.O1]: {
+    provider: AIProvider.OPENAI,
+    model: OpenAIModels.O1,
+    contextWindow: 200_000,
+    maxOutput: 100_000,
+    supportsStreaming: false,
+    supportsImages: true,
+    strengths: ['deep-reasoning', 'complex-problems'],
+  },
+  [OpenAIModels.O1_MINI]: {
+    provider: AIProvider.OPENAI,
+    model: OpenAIModels.O1_MINI,
+    contextWindow: 128_000,
+    maxOutput: 65_536,
+    supportsStreaming: false,
     supportsImages: false,
-  },
-  [OpenAIModels.GPT_5_2]: {
-    provider: AIProvider.OPENAI,
-    model: OpenAIModels.GPT_5_2,
-    contextWindow: 256_000,
-    supportsStreaming: true,
-    supportsImages: true,
+    strengths: ['fast-reasoning', 'math', 'code'],
   },
   [GeminiModels.GEMINI_2_5_FLASH]: {
     provider: AIProvider.GEMINI,
     model: GeminiModels.GEMINI_2_5_FLASH,
     contextWindow: 1_000_000,
+    maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
+    strengths: ['fast-planning', 'cost-effective'],
   },
   [GeminiModels.GEMINI_2_5_PRO]: {
     provider: AIProvider.GEMINI,
     model: GeminiModels.GEMINI_2_5_PRO,
     contextWindow: 2_000_000,
+    maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
+    strengths: ['planning', 'large-context', 'multimodal'],
   },
   [GeminiModels.GEMINI_3_FLASH_PREVIEW]: {
     provider: AIProvider.GEMINI,
     model: GeminiModels.GEMINI_3_FLASH_PREVIEW,
     contextWindow: 1_000_000,
+    maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
+    strengths: ['next-gen-fast', 'balanced'],
   },
   [GeminiModels.GEMINI_3_PRO_PREVIEW]: {
     provider: AIProvider.GEMINI,
     model: GeminiModels.GEMINI_3_PRO_PREVIEW,
     contextWindow: 2_000_000,
+    maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
+    strengths: ['next-gen-pro', 'vision', 'reasoning'],
   },
 };

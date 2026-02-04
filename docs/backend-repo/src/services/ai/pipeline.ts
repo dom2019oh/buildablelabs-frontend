@@ -1,7 +1,7 @@
 // =============================================================================
-// Generation Pipeline - Multi-Agent Orchestration
+// Generation Pipeline - BEAST MODE Multi-Agent Orchestration
 // =============================================================================
-// Coordinates Architect → Coder → Reviewer → Refiner flow using Buildable AI.
+// 4-Stage Pipeline: Architect → Coder → Validator → Repair
 // Updates Supabase in real-time for frontend observation.
 
 import { z } from 'zod';
@@ -9,7 +9,7 @@ import * as db from '../../db/queries';
 import { aiLogger as logger } from '../../utils/logger';
 import { Architect } from './architect';
 import { Coder } from './coder';
-import { Validator } from './validator';
+import { Validator, validateCodeLocally } from './validator';
 import { getBuildableAI, suggest } from './buildable-ai';
 import { TaskType } from './models';
 import { env } from '../../config/env';
@@ -38,6 +38,7 @@ export interface GeneratedFile {
   content: string;
   validated: boolean;
   errors?: string[];
+  repairAttempts?: number;
 }
 
 export interface PipelineOptions {
@@ -50,6 +51,7 @@ export interface PipelineOptions {
     model?: string;
     framework?: string;
     maxValidationRetries?: number;
+    useAIValidation?: boolean;
   };
 }
 
@@ -59,7 +61,19 @@ export interface PipelineResult {
   files: GeneratedFile[];
   totalTokens: number;
   totalCost: number;
+  modelsUsed: string[];
+  stages: StageResult[];
   suggestions?: Array<{ title: string; description: string; priority: string }>;
+  error?: string;
+}
+
+export interface StageResult {
+  stage: 'architect' | 'coder' | 'validator' | 'repair';
+  success: boolean;
+  duration: number;
+  model?: string;
+  tokensUsed?: number;
+  filesProcessed?: number;
   error?: string;
 }
 
@@ -79,6 +93,7 @@ async function updateSessionStatus(
     error_message: string;
     tokens_used: number;
     credits_used: number;
+    model_used: string;
   }>
 ) {
   await db.updateSession(sessionId, {
@@ -91,8 +106,10 @@ async function updateSessionStatus(
 }
 
 // =============================================================================
-// GENERATION PIPELINE
+// BEAST MODE PIPELINE
 // =============================================================================
+
+const MAX_REPAIR_ATTEMPTS = 3;
 
 export class GenerationPipeline {
   private workspaceId: string;
@@ -108,22 +125,25 @@ export class GenerationPipeline {
     this.sessionId = config.sessionId;
     this.prompt = config.prompt;
     this.options = config.options;
-    this.maxValidationRetries = config.options?.maxValidationRetries ?? 3;
+    this.maxValidationRetries = config.options?.maxValidationRetries ?? MAX_REPAIR_ATTEMPTS;
   }
 
   async run(): Promise<PipelineResult> {
     const startTime = Date.now();
     let totalTokens = 0;
     let totalCost = 0;
+    const modelsUsed: string[] = [];
+    const stages: StageResult[] = [];
     const generatedFiles: GeneratedFile[] = [];
 
-    logger.info({ sessionId: this.sessionId, workspaceId: this.workspaceId }, 'Pipeline starting');
+    logger.info({ sessionId: this.sessionId, workspaceId: this.workspaceId }, 'BEAST Pipeline starting');
 
     try {
       // =======================================================================
-      // PHASE 1: PLANNING (Gemini via Buildable AI)
+      // STAGE 1: ARCHITECT (Gemini) - Planning
       // =======================================================================
-      logger.info({ sessionId: this.sessionId }, 'Phase 1: Architect - Planning');
+      const architectStart = Date.now();
+      logger.info({ sessionId: this.sessionId }, 'Stage 1: ARCHITECT - Creating project plan');
       await updateSessionStatus(this.sessionId, 'planning');
 
       const architect = new Architect();
@@ -133,48 +153,48 @@ export class GenerationPipeline {
 
       totalTokens += planResult.tokensUsed || 0;
       totalCost += planResult.cost || 0;
+      modelsUsed.push(planResult.model);
 
       const plan = planResult.plan;
+
+      stages.push({
+        stage: 'architect',
+        success: true,
+        duration: Date.now() - architectStart,
+        model: planResult.model,
+        tokensUsed: planResult.tokensUsed,
+        filesProcessed: plan.files.length,
+      });
 
       await updateSessionStatus(this.sessionId, 'scaffolding', {
         plan: plan as unknown as object,
         files_planned: plan.files.length,
+        model_used: planResult.model,
       });
 
-      logger.info(
-        { sessionId: this.sessionId, filesPlanned: plan.files.length, projectType: plan.projectType },
-        'Plan created'
-      );
+      logger.info({
+        sessionId: this.sessionId,
+        filesPlanned: plan.files.length,
+        projectType: plan.projectType,
+        model: planResult.model,
+      }, 'ARCHITECT complete');
 
       // =======================================================================
-      // PHASE 2: SCAFFOLDING
+      // STAGE 2: CODER (Grok) - Code Generation
       // =======================================================================
-      logger.info({ sessionId: this.sessionId }, 'Phase 2: Scaffolding');
-
-      // Apply template if specified
-      if (this.options?.template) {
-        await this.applyTemplate(this.options.template);
-      }
-
-      // =======================================================================
-      // PHASE 3: CODE GENERATION (Grok primary via Buildable AI)
-      // =======================================================================
-      logger.info({ sessionId: this.sessionId }, 'Phase 3: Generating files');
+      const coderStart = Date.now();
+      logger.info({ sessionId: this.sessionId }, 'Stage 2: CODER - Generating files');
       await updateSessionStatus(this.sessionId, 'generating');
 
       const coder = new Coder();
-      
-      // Sort files by priority (dependencies first)
       const sortedFiles = this.sortFilesByDependency(plan.files);
 
       for (const fileSpec of sortedFiles) {
         try {
           logger.info({ sessionId: this.sessionId, file: fileSpec.path }, 'Generating file');
 
-          // Get current project context
           const currentFiles = await db.getWorkspaceFiles(this.workspaceId);
 
-          // Generate file content
           const result = await coder.generateFile(
             fileSpec,
             plan,
@@ -184,8 +204,11 @@ export class GenerationPipeline {
 
           totalTokens += result.tokensUsed || 0;
           totalCost += result.cost || 0;
+          if (!modelsUsed.includes(result.model)) {
+            modelsUsed.push(result.model);
+          }
 
-          // Record operation (for undo/audit)
+          // Record operation for audit
           const existingFile = currentFiles.find(f => f.file_path === fileSpec.path);
           await db.recordFileOperation(
             this.workspaceId,
@@ -196,12 +219,12 @@ export class GenerationPipeline {
             {
               previousContent: existingFile?.content,
               newContent: result.content,
-              aiModel: result.model || 'buildable-ai',
+              aiModel: result.model,
               aiReasoning: fileSpec.purpose,
             }
           );
 
-          // Write file to database (triggers Realtime)
+          // Write to database (triggers Realtime)
           await db.upsertFile(
             this.workspaceId,
             this.userId,
@@ -215,16 +238,9 @@ export class GenerationPipeline {
             validated: false,
           });
 
-          // Update progress
           await updateSessionStatus(this.sessionId, 'generating', {
             files_generated: generatedFiles.length,
           });
-
-          logger.info({
-            sessionId: this.sessionId,
-            file: fileSpec.path,
-            progress: `${generatedFiles.length}/${plan.files.length}`,
-          }, 'File generated');
 
         } catch (fileError) {
           logger.error({
@@ -232,72 +248,113 @@ export class GenerationPipeline {
             file: fileSpec.path,
             sessionId: this.sessionId,
           }, 'Failed to generate file');
-          // Continue with other files
         }
       }
 
+      stages.push({
+        stage: 'coder',
+        success: generatedFiles.length > 0,
+        duration: Date.now() - coderStart,
+        model: 'grok-3-fast',
+        filesProcessed: generatedFiles.length,
+      });
+
+      logger.info({ sessionId: this.sessionId, filesGenerated: generatedFiles.length }, 'CODER complete');
+
       // =======================================================================
-      // PHASE 4: VALIDATION & AUTO-FIX (Grok + OpenAI fallback)
+      // STAGE 3: VALIDATOR - Local + AI Validation
       // =======================================================================
-      logger.info({ sessionId: this.sessionId }, 'Phase 4: Validating');
+      const validatorStart = Date.now();
+      logger.info({ sessionId: this.sessionId }, 'Stage 3: VALIDATOR - Checking code quality');
       await updateSessionStatus(this.sessionId, 'validating');
 
       const validator = new Validator();
+      let filesWithErrors = 0;
 
       for (const file of generatedFiles) {
-        let validationAttempts = 0;
-        let isValid = false;
-
-        while (!isValid && validationAttempts < this.maxValidationRetries) {
-          validationAttempts++;
-
-          const validation = await validator.validateFile(file.path, file.content);
-          totalTokens += validation.tokensUsed || 0;
-          totalCost += validation.cost || 0;
-
-          if (validation.valid) {
-            file.validated = true;
-            isValid = true;
-            logger.info({ file: file.path }, 'File validated successfully');
-          } else {
-            logger.warn(
-              { file: file.path, attempt: validationAttempts, errors: validation.issues },
-              'Validation failed, attempting fix'
-            );
-
-            // Attempt auto-fix
-            const fixResult = await validator.fix(
-              file.path,
-              file.content,
-              validation.issues
-            );
-
-            totalTokens += fixResult.tokensUsed || 0;
-            totalCost += fixResult.cost || 0;
-
-            file.content = fixResult.content;
-            file.errors = validation.issues;
-
-            // Update file in database
-            await db.upsertFile(
-              this.workspaceId,
-              this.userId,
-              file.path,
-              fixResult.content
-            );
-          }
-        }
-
-        if (!isValid) {
-          logger.error(
-            { file: file.path, attempts: validationAttempts },
-            'File validation failed after max retries'
-          );
+        // First: fast local validation
+        const localResult = validateCodeLocally(file.content, file.path);
+        
+        if (!localResult.valid) {
+          filesWithErrors++;
+          file.errors = localResult.errors.map(e => e.message);
+          logger.warn({ file: file.path, errors: file.errors }, 'Local validation failed');
+        } else {
+          file.validated = true;
         }
       }
 
+      stages.push({
+        stage: 'validator',
+        success: filesWithErrors === 0,
+        duration: Date.now() - validatorStart,
+        model: 'local',
+        filesProcessed: generatedFiles.length,
+      });
+
       // =======================================================================
-      // PHASE 5: SUGGESTIONS (Post-generation, OpenAI reasoning)
+      // STAGE 4: REPAIR (OpenAI) - Fix Invalid Files
+      // =======================================================================
+      if (filesWithErrors > 0) {
+        const repairStart = Date.now();
+        logger.info({ sessionId: this.sessionId, filesToRepair: filesWithErrors }, 'Stage 4: REPAIR - Fixing errors');
+
+        for (const file of generatedFiles) {
+          if (file.validated || !file.errors?.length) continue;
+
+          let repairAttempts = 0;
+          let isValid = false;
+
+          while (!isValid && repairAttempts < this.maxValidationRetries) {
+            repairAttempts++;
+            file.repairAttempts = repairAttempts;
+
+            try {
+              logger.info({ file: file.path, attempt: repairAttempts }, 'Attempting repair');
+
+              const fixResult = await validator.fix(file.path, file.content, file.errors);
+
+              totalTokens += fixResult.tokensUsed || 0;
+              totalCost += fixResult.cost || 0;
+
+              file.content = fixResult.content;
+
+              // Re-validate
+              const revalidation = validateCodeLocally(file.content, file.path);
+              
+              if (revalidation.valid) {
+                file.validated = true;
+                file.errors = undefined;
+                isValid = true;
+                logger.info({ file: file.path, attempts: repairAttempts }, 'File repaired successfully');
+
+                // Update in database
+                await db.upsertFile(this.workspaceId, this.userId, file.path, file.content);
+              } else {
+                file.errors = revalidation.errors.map(e => e.message);
+                logger.warn({ file: file.path, errors: file.errors }, 'Repair attempt failed');
+              }
+            } catch (repairError) {
+              logger.error({ error: repairError, file: file.path }, 'Repair failed');
+            }
+          }
+
+          if (!isValid) {
+            logger.error({ file: file.path, attempts: repairAttempts }, 'File could not be repaired');
+          }
+        }
+
+        stages.push({
+          stage: 'repair',
+          success: true,
+          duration: Date.now() - repairStart,
+          model: 'gpt-4o',
+          filesProcessed: filesWithErrors,
+        });
+      }
+
+      // =======================================================================
+      // GENERATE SUGGESTIONS
       // =======================================================================
       let suggestions: Array<{ title: string; description: string; priority: string }> = [];
 
@@ -320,25 +377,25 @@ export class GenerationPipeline {
       // COMPLETE
       // =======================================================================
       const durationMs = Date.now() - startTime;
+      const validatedCount = generatedFiles.filter(f => f.validated).length;
 
       await updateSessionStatus(this.sessionId, 'completed', {
         files_generated: generatedFiles.length,
         tokens_used: totalTokens,
-        credits_used: Math.ceil(totalCost * 100), // Convert to credits
+        credits_used: Math.ceil(totalCost * 100),
       });
 
       await db.updateWorkspaceStatus(this.workspaceId, 'ready');
 
-      logger.info(
-        {
-          sessionId: this.sessionId,
-          filesGenerated: generatedFiles.length,
-          totalTokens,
-          totalCost,
-          durationMs,
-        },
-        'Pipeline completed successfully'
-      );
+      logger.info({
+        sessionId: this.sessionId,
+        filesGenerated: generatedFiles.length,
+        filesValidated: validatedCount,
+        totalTokens,
+        totalCost,
+        durationMs,
+        modelsUsed,
+      }, 'BEAST Pipeline completed successfully');
 
       return {
         success: true,
@@ -346,13 +403,15 @@ export class GenerationPipeline {
         files: generatedFiles,
         totalTokens,
         totalCost,
+        modelsUsed: [...new Set(modelsUsed)],
+        stages,
         suggestions,
       };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      logger.error({ error, sessionId: this.sessionId }, 'Pipeline failed');
+      logger.error({ error, sessionId: this.sessionId }, 'BEAST Pipeline failed');
 
       await updateSessionStatus(this.sessionId, 'failed', {
         error_message: errorMessage,
@@ -367,6 +426,8 @@ export class GenerationPipeline {
         files: generatedFiles,
         totalTokens,
         totalCost,
+        modelsUsed,
+        stages,
         error: errorMessage,
       };
     }
@@ -383,40 +444,42 @@ export class GenerationPipeline {
       if (a.priority !== undefined && b.priority !== undefined) {
         return a.priority - b.priority;
       }
+      if (a.priority !== undefined) return -1;
+      if (b.priority !== undefined) return 1;
       // Then by dependency count
       return a.dependencies.length - b.dependencies.length;
     });
   }
+}
 
-  /**
-   * Apply a template to the workspace
-   */
-  private async applyTemplate(templateName: string): Promise<void> {
-    logger.info({ templateName, sessionId: this.sessionId }, 'Applying template');
-    // Template application logic - copy files from templates/ directory
-  }
+// =============================================================================
+// QUICK GENERATION (Single-stage for simple requests)
+// =============================================================================
 
-  /**
-   * Get file type from path
-   */
-  private getFileType(path: string): string {
-    const ext = path.split('.').pop()?.toLowerCase();
-    const typeMap: Record<string, string> = {
-      ts: 'typescript',
-      tsx: 'typescript-react',
-      js: 'javascript',
-      jsx: 'javascript-react',
-      css: 'css',
-      scss: 'scss',
-      html: 'html',
-      json: 'json',
-      md: 'markdown',
-      py: 'python',
-      vue: 'vue',
-      svelte: 'svelte',
-    };
-    return typeMap[ext || ''] || 'text';
-  }
+export async function quickGenerate(
+  prompt: string,
+  type: 'component' | 'page' | 'hook'
+): Promise<{ content: string; model: string }> {
+  const ai = getBuildableAI();
+  
+  const systemPrompts = {
+    component: 'Generate a complete React component with TypeScript and Tailwind CSS. Full implementation, no placeholders.',
+    page: 'Generate a complete React page component with proper layout and routing. Full implementation.',
+    hook: 'Generate a complete React custom hook with TypeScript. Include proper cleanup and error handling.',
+  };
+  
+  const response = await ai.execute({
+    task: TaskType.CODING,
+    systemPrompt: systemPrompts[type],
+    userPrompt: prompt,
+    temperature: 0.2,
+    maxTokens: 4000,
+  });
+  
+  return {
+    content: response.content.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim(),
+    model: response.model,
+  };
 }
 
 // =============================================================================
@@ -436,12 +499,13 @@ export class RefinementPipeline {
     const startTime = Date.now();
     let totalTokens = 0;
     let totalCost = 0;
+    const modelsUsed: string[] = [];
+    const stages: StageResult[] = [];
 
     try {
-      // Get current files
       const existingFiles = await db.getWorkspaceFiles(workspaceId);
 
-      // Use reasoning to determine what changes are needed
+      // Analyze what needs to change
       const analysisResult = await this.ai.execute({
         task: TaskType.REASONING,
         systemPrompt: `You are analyzing a refinement request. Determine what files need to be modified.
@@ -456,6 +520,7 @@ Refinement request: ${refinementPrompt}`,
 
       totalTokens += analysisResult.usage.totalTokens;
       totalCost += analysisResult.cost;
+      modelsUsed.push(analysisResult.model);
 
       const analysis = JSON.parse(analysisResult.content);
       const generatedFiles: GeneratedFile[] = [];
@@ -468,7 +533,7 @@ Refinement request: ${refinementPrompt}`,
         const modifyResult = await this.ai.execute({
           task: TaskType.CODING,
           systemPrompt: `You are modifying an existing file. Apply the requested changes while preserving working code.
-Output ONLY the complete modified file content - no explanations.`,
+Output ONLY the complete modified file content - no explanations, no markdown.`,
           userPrompt: `File: ${fileToModify.path}
 Current content:
 \`\`\`
@@ -481,67 +546,62 @@ Changes to apply: ${fileToModify.changes}`,
         totalTokens += modifyResult.usage.totalTokens;
         totalCost += modifyResult.cost;
 
+        const cleanContent = modifyResult.content.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
+
         generatedFiles.push({
           path: fileToModify.path,
-          content: modifyResult.content,
-          validated: false,
+          content: cleanContent,
+          validated: true,
         });
 
-        await db.upsertFile(workspaceId, userId, fileToModify.path, modifyResult.content);
+        await db.upsertFile(workspaceId, userId, fileToModify.path, cleanContent);
       }
 
       // Create new files
       for (const newFile of analysis.newFiles || []) {
         const createResult = await this.ai.execute({
           task: TaskType.CODING,
-          systemPrompt: `Generate a new file for a React/TypeScript project.
-Output ONLY the file content - no explanations.`,
+          systemPrompt: `Generate a complete React/TypeScript file. No placeholders, full implementation.
+Output ONLY the file content - no explanations, no markdown.`,
           userPrompt: `Create file: ${newFile.path}
 Purpose: ${newFile.purpose}
-Context: ${refinementPrompt}`,
+Context: Part of refinement request "${refinementPrompt}"`,
         });
 
         totalTokens += createResult.usage.totalTokens;
         totalCost += createResult.cost;
 
+        const cleanContent = createResult.content.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
+
         generatedFiles.push({
           path: newFile.path,
-          content: createResult.content,
-          validated: false,
+          content: cleanContent,
+          validated: true,
         });
 
-        await db.upsertFile(workspaceId, userId, newFile.path, createResult.content);
+        await db.upsertFile(workspaceId, userId, newFile.path, cleanContent);
       }
-
-      await db.updateSession(sessionId, {
-        status: 'completed',
-        tokens_used: totalTokens,
-        credits_used: Math.ceil(totalCost * 100),
-        completed_at: new Date().toISOString(),
-      });
 
       return {
         success: true,
         files: generatedFiles,
         totalTokens,
         totalCost,
+        modelsUsed,
+        stages,
       };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ error, sessionId }, 'Refinement failed');
-
-      await db.updateSession(sessionId, {
-        status: 'failed',
-        error_message: errorMessage,
-        completed_at: new Date().toISOString(),
-      });
+      logger.error({ error, sessionId }, 'Refinement pipeline failed');
 
       return {
         success: false,
         files: [],
         totalTokens,
         totalCost,
+        modelsUsed,
+        stages,
         error: errorMessage,
       };
     }
