@@ -14,6 +14,9 @@ import DashboardUsage from "./pages/DashboardUsage";
 import DashboardBilling from "./pages/DashboardBilling";
 import DashboardSettings from "./pages/DashboardSettings";
 import DashboardProject from "./pages/DashboardProject";
+import DashboardTemplates from "./pages/DashboardTemplates";
+import DashboardComponents from "./pages/DashboardComponents";
+import DashboardBackgrounds from "./pages/DashboardBackgrounds";
 import Docs from "./pages/Docs";
 import Explore from "./pages/Explore";
 // Use the new backend-driven workspace (V2)
@@ -40,6 +43,10 @@ const App = () => (
             <Route path="/dashboard/billing" element={<ProtectedRoute><DashboardBilling /></ProtectedRoute>} />
             <Route path="/dashboard/settings" element={<ProtectedRoute><DashboardSettings /></ProtectedRoute>} />
             <Route path="/dashboard/project/:projectId" element={<ProtectedRoute><DashboardProject /></ProtectedRoute>} />
+            {/* Library Routes - Templates public, Components/Backgrounds protected */}
+            <Route path="/dashboard/templates" element={<DashboardTemplates />} />
+            <Route path="/dashboard/components" element={<ProtectedRoute><DashboardComponents /></ProtectedRoute>} />
+            <Route path="/dashboard/backgrounds" element={<ProtectedRoute><DashboardBackgrounds /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/explore" element={<Explore />} />
