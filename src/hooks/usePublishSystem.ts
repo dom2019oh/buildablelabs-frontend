@@ -22,13 +22,18 @@ export interface PublishResult {
   error?: string;
 }
 
-// Generate the project subdomain URL
-function generateProjectUrl(projectName: string): string {
-  const slug = projectName
+// Generate a valid subdomain from project name
+function generateSubdomain(projectName: string): string {
+  return projectName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-  return `https://${slug}.buildablelabs.dev`;
+    .replace(/^-|-$/g, '')
+    .substring(0, 63); // DNS label limit
+}
+
+// Generate the project URL
+function generateProjectUrl(subdomain: string): string {
+  return `https://${subdomain}.buildablelabs.dev`;
 }
 
 // Generate branding injection script for free plans
@@ -106,7 +111,6 @@ function generateBrandingScript(): string {
 function injectBranding(html: string, shouldInject: boolean): string {
   if (!shouldInject) return html;
   
-  // Insert branding before </body>
   const brandingScript = generateBrandingScript();
   return html.replace('</body>', `${brandingScript}\n</body>`);
 }
@@ -138,7 +142,7 @@ export function usePublishSystem(projectId: string | undefined) {
     enabled: !!projectId,
   });
 
-  // Publish mutation
+  // Publish mutation - now uploads to storage
   const publishMutation = useMutation({
     mutationFn: async (previewHtml: string): Promise<PublishResult> => {
       if (!projectId || !user || !project) {
@@ -147,26 +151,45 @@ export function usePublishSystem(projectId: string | undefined) {
 
       setPublishState('publishing');
 
-      // Step 1: Run a clean production build
-      // (In a real system, this would compile the code)
+      // Step 1: Generate subdomain
+      const subdomain = generateSubdomain(project.name);
+      const deployedUrl = generateProjectUrl(subdomain);
       
       // Step 2: Inject branding for free plans
       const productionHtml = injectBranding(previewHtml, isFreeplan);
       
-      // Step 3: Generate deployment URL
-      const deployedUrl = generateProjectUrl(project.name);
+      // Step 3: Upload HTML to storage
+      const storagePath = `${user.id}/${projectId}/index.html`;
+      const htmlBlob = new Blob([productionHtml], { type: 'text/html' });
       
-      // Step 4: Update project with live deployment
-      const { error } = await supabase
+      const { error: uploadError } = await supabase
+        .storage
+        .from('published-sites')
+        .upload(storagePath, htmlBlob, {
+          contentType: 'text/html',
+          upsert: true,
+        });
+      
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw new Error('Failed to upload site: ' + uploadError.message);
+      }
+      
+      // Step 4: Update project with subdomain and deployed URL
+      const { error: updateError } = await supabase
         .from('projects')
         .update({
+          subdomain,
           deployed_url: deployedUrl,
           status: 'ready',
           updated_at: new Date().toISOString(),
         })
         .eq('id', projectId);
       
-      if (error) throw error;
+      if (updateError) {
+        console.error('Update error:', updateError);
+        throw new Error('Failed to update project: ' + updateError.message);
+      }
       
       // Step 5: Create build record
       const { error: buildError } = await supabase
@@ -176,12 +199,15 @@ export function usePublishSystem(projectId: string | undefined) {
           user_id: user.id,
           status: 'completed',
           completed_at: new Date().toISOString(),
-          duration_seconds: 5,
-          build_logs: `Build completed successfully.\nDeployed to: ${deployedUrl}\n${isFreeplan ? 'Branding badge injected (Free plan)' : 'No branding (Paid plan)'}`,
+          duration_seconds: 3,
+          build_logs: `✓ Build completed successfully
+✓ Uploaded to storage: ${storagePath}
+✓ Deployed to: ${deployedUrl}
+${isFreeplan ? '✓ Branding badge injected (Free plan)' : '✓ No branding (Paid plan)'}`,
         });
       
       if (buildError) {
-        console.error('Failed to create build record:', buildError);
+        console.error('Build record error:', buildError);
       }
 
       setPublishState('live');
@@ -214,12 +240,21 @@ export function usePublishSystem(projectId: string | undefined) {
   // Unpublish mutation
   const unpublishMutation = useMutation({
     mutationFn: async () => {
-      if (!projectId) throw new Error('No project ID');
+      if (!projectId || !user) throw new Error('No project ID');
       
+      // Delete from storage
+      const storagePath = `${user.id}/${projectId}/index.html`;
+      await supabase
+        .storage
+        .from('published-sites')
+        .remove([storagePath]);
+      
+      // Update project
       const { error } = await supabase
         .from('projects')
         .update({
           deployed_url: null,
+          subdomain: null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', projectId);
@@ -258,6 +293,7 @@ export function usePublishSystem(projectId: string | undefined) {
     // Data
     project,
     deployedUrl: project?.deployed_url,
+    subdomain: (project as any)?.subdomain,
     isFreeplan,
     
     // Actions

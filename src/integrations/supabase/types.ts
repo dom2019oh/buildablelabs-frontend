@@ -532,6 +532,7 @@ export type Database = {
           name: string
           preview_html: string | null
           status: Database["public"]["Enums"]["project_status"]
+          subdomain: string | null
           updated_at: string
           user_id: string
         }
@@ -544,6 +545,7 @@ export type Database = {
           name: string
           preview_html?: string | null
           status?: Database["public"]["Enums"]["project_status"]
+          subdomain?: string | null
           updated_at?: string
           user_id: string
         }
@@ -556,6 +558,7 @@ export type Database = {
           name?: string
           preview_html?: string | null
           status?: Database["public"]["Enums"]["project_status"]
+          subdomain?: string | null
           updated_at?: string
           user_id?: string
         }

@@ -59,11 +59,12 @@ export default function PublishDropdown({
     publish,
     isPublishing,
     deployedUrl,
+    subdomain: existingSubdomain,
     isFreeplan,
   } = usePublishSystem(projectId);
 
   const [subdomain, setSubdomain] = useState(
-    projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    existingSubdomain || projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   );
   const [isEditingSubdomain, setIsEditingSubdomain] = useState(false);
   const [accessLevel, setAccessLevel] = useState<'everyone' | 'private'>('everyone');
