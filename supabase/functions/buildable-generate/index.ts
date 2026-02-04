@@ -470,12 +470,14 @@ function validateCodeLocally(files: FileOperation[]): ValidationResult {
       warnings.push(`${path}: Possible incomplete ternary operator`);
     }
 
-    // Check for missing useState import when useState is used
-    if (content.includes("useState") && !content.includes("import") && !content.includes("useState")) {
+    // Check for missing React hooks import when hooks are used
+    const usesHooks = /\b(useState|useEffect|useRef|useMemo|useCallback)\b/.test(content);
+    const hasReactImport = /import\s+.*\{[^}]*(useState|useEffect|useRef|useMemo|useCallback)[^}]*\}.*from\s+['"]react['"]/.test(content);
+    if (usesHooks && !hasReactImport) {
       errors.push({
         file: path,
-        error: "useState used but not imported",
-        fix: "Add: import { useState } from 'react';"
+        error: "React hooks used but may not be imported from 'react'",
+        fix: "Add: import { useState, useEffect } from 'react';"
       });
     }
 
