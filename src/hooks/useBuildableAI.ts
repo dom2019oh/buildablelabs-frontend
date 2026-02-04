@@ -23,6 +23,10 @@ export interface GenerationMetadata {
   model: string;
   filesGenerated?: number;
   filePaths?: string[];
+  // NEW: Persona response from Beast Mode
+  aiMessage?: string;
+  routes?: string[];
+  suggestions?: string[];
 }
 
 export interface GeneratedFile {
@@ -43,6 +47,10 @@ interface UseBuildableAIState {
   phase: GenerationPhase;
   generatedFiles: GeneratedFile[];
   error: string | null;
+  // NEW: Persona response for display
+  aiMessage: string;
+  routes: string[];
+  suggestions: string[];
 }
 
 // =============================================================================
@@ -83,6 +91,9 @@ export function useBuildableAI(projectId: string | undefined) {
     phase: { phase: 'idle', message: '' },
     generatedFiles: [],
     error: null,
+    aiMessage: '',
+    routes: ['/'],
+    suggestions: [],
   });
 
   // Subscribe to workspace file changes for real-time updates
@@ -163,6 +174,9 @@ export function useBuildableAI(projectId: string | undefined) {
       phase: { phase: 'starting', message: 'Starting generation...' },
       generatedFiles: [],
       error: null,
+      aiMessage: '',
+      routes: ['/'],
+      suggestions: [],
     });
 
     // Subscribe to workspace updates
@@ -367,6 +381,9 @@ export function useBuildableAI(projectId: string | undefined) {
       phase: { phase: 'idle', message: '' },
       generatedFiles: [],
       error: null,
+      aiMessage: '',
+      routes: ['/'],
+      suggestions: [],
     });
   }, []);
 

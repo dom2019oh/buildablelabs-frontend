@@ -2,12 +2,12 @@
 // BUILDABLE AI - BEAST MODE 🔥
 // =============================================================================
 // Ultra-smart multi-model pipeline with:
+// - Warm, conversational AI persona
 // - Strict code validation & auto-repair
-// - JSX syntax checking before output
-// - Intelligent retry with error context
-// - Production-quality enforcement
+// - Library-aware suggestions
+// - Route detection and updates
 //
-// Pipeline: Intent → Architect → Coder → Validator → Auto-Repair → Deploy
+// Pipeline: Intent → Architect → Coder → Validator → Auto-Repair → Persona → Deploy
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -63,6 +63,7 @@ const TASK_ROUTING = {
   coding: { provider: "grok", model: "code", fallback: { provider: "openai", model: "gpt4o" } },
   validation: { provider: "openai", model: "mini", fallback: { provider: "grok", model: "fast" } },
   repair: { provider: "openai", model: "gpt4o", fallback: { provider: "grok", model: "code" } },
+  persona: { provider: "openai", model: "mini", fallback: { provider: "gemini", model: "flash" } },
 } as const;
 
 type TaskType = keyof typeof TASK_ROUTING;
@@ -71,8 +72,69 @@ type ProviderKey = keyof typeof AI_PROVIDERS;
 type DB = SupabaseClient<any, "public", any>;
 
 // =============================================================================
-// BEAST MODE SYSTEM PROMPTS - Production Quality Enforcement
+// BUILDABLE AI PERSONA - Warm, Helpful, Encouraging
 // =============================================================================
+
+const BUILDABLE_PERSONA_PROMPT = `You are **Buildable AI** — a warm, encouraging assistant who builds websites with love ❤️
+
+## YOUR PERSONALITY:
+- Warm and friendly, like a helpful friend who loves building things
+- Encouraging and positive without being over-the-top
+- Concise (1-2 sentences for intro, 1-2 for outro)
+- Always suggest actionable next steps
+
+## RESPONSE FORMAT:
+
+### For NEW PROJECT/PAGE requests:
+"[Short intro acknowledging what they asked for]
+
+{THINKING_INDICATOR}
+
+[Short outro about what you created + 2-3 specific suggestions]
+
+💡 **Quick tips:**
+- For design tweaks, check out the [Components Library](/dashboard/components) 
+- Want a different vibe? Browse our [Backgrounds Library](/dashboard/backgrounds)
+- Just describe any changes and I'll make them!"
+
+### For MODIFICATIONS:
+"[Short acknowledgment]
+
+{THINKING_INDICATOR}
+
+[What was changed + specific follow-up suggestions]"
+
+## EXAMPLES:
+
+**User**: "make a landing page for a local bakery"
+**You**: "Ooh, a bakery page! 🥐 Let me whip that up for you...
+
+{THINKING_INDICATOR}
+
+Done! I created a cozy landing page with a warm hero section, menu showcase, and contact info. The design uses soft, appetizing colors perfect for a bakery.
+
+💡 **Next steps:**
+- Add your bakery's actual photos to make it pop
+- Tweak the menu items in the Features section  
+- Browse our [Backgrounds Library](/dashboard/backgrounds) for different vibes!"
+
+**User**: "add a contact form"
+**You**: "Adding a contact form right now...
+
+{THINKING_INDICATOR}
+
+Done! I added a beautiful contact form with name, email, and message fields. It's styled to match your site perfectly.
+
+Want me to connect it to email, or add more fields like phone number?"
+
+## RULES:
+1. ALWAYS include the {THINKING_INDICATOR} marker where the live action log should appear
+2. Keep intros SHORT (1 line)
+3. Keep outros ACTIONABLE (what was done + what to do next)
+4. Reference libraries when relevant (components, backgrounds)
+5. Suggest 2-3 concrete next steps
+6. Use relevant emojis sparingly (1-2 per response)
+7. NEVER show code blocks in your response — code goes directly to the file system`;
 
 const BEAST_ARCHITECT_PROMPT = `You are Buildable's Architect AI — a world-class software architect.
 
@@ -96,6 +158,8 @@ Analyze the user's request and create a PRECISE implementation plan.
     { "path": "src/components/layout/Navbar.tsx", "features": ["logo", "nav-links", "mobile-menu", "cta-button"] },
     { "path": "src/components/Hero.tsx", "features": ["badge", "headline", "subheadline", "cta-buttons", "gradient-bg"] }
   ],
+  "routes": ["/", "/about", "/contact", "/menu"],
+  "nicheImages": ["bakery products", "fresh bread", "pastries"],
   "specialInstructions": "any specific requirements"
 }
 
@@ -491,12 +555,94 @@ interface PipelineResult {
   validationPassed: boolean;
   repairAttempts: number;
   errors?: string[];
+  // NEW: Conversational response
+  aiMessage: string;
+  routes: string[];
+  suggestions: string[];
+}
+
+// =============================================================================
+// PERSONA RESPONSE GENERATOR
+// =============================================================================
+
+async function generatePersonaResponse(
+  prompt: string,
+  files: FileOperation[],
+  plan: string,
+  isNewProject: boolean
+): Promise<{ message: string; routes: string[]; suggestions: string[] }> {
+  // Extract routes from plan or files
+  let routes: string[] = ["/"];
+  try {
+    const planJson = JSON.parse(plan);
+    if (planJson.routes) {
+      routes = planJson.routes;
+    }
+  } catch {
+    // Extract routes from file paths
+    const pageFiles = files.filter(f => f.path.includes("/pages/"));
+    routes = pageFiles.map(f => {
+      const name = f.path.split("/").pop()?.replace(".tsx", "").toLowerCase() || "";
+      return name === "index" ? "/" : `/${name}`;
+    });
+    if (!routes.includes("/")) routes.unshift("/");
+  }
+
+  // Generate contextual suggestions based on what was created
+  const suggestions: string[] = [];
+  const hasNavbar = files.some(f => f.path.toLowerCase().includes("navbar"));
+  const hasHero = files.some(f => f.path.toLowerCase().includes("hero"));
+  const hasPricing = files.some(f => f.path.toLowerCase().includes("pricing"));
+  const hasContact = files.some(f => f.path.toLowerCase().includes("contact"));
+
+  if (!hasContact) suggestions.push("Add a contact form");
+  if (!hasPricing) suggestions.push("Add a pricing section");
+  if (hasHero) suggestions.push("Change the hero image or colors");
+  suggestions.push("Browse the [Components Library](/dashboard/components) for more sections");
+  suggestions.push("Try a different style from the [Backgrounds Library](/dashboard/backgrounds)");
+
+  // Generate friendly message
+  const fileList = files.map(f => f.path.split("/").pop()).slice(0, 5).join(", ");
+  const projectType = detectProjectType(prompt);
+  const emoji = getProjectEmoji(projectType);
+
+  let message: string;
+  if (isNewProject) {
+    message = `${emoji} Creating your ${projectType}...\n\n{THINKING_INDICATOR}\n\nDone! I created ${files.length} files including ${fileList}. Everything's styled and ready to preview!\n\n💡 **Next steps:**\n${suggestions.slice(0, 3).map(s => `- ${s}`).join("\n")}`;
+  } else {
+    message = `Making those changes now...\n\n{THINKING_INDICATOR}\n\nDone! I updated ${files.length} file(s). Take a look at the preview!\n\n💡 **Want more?**\n${suggestions.slice(0, 2).map(s => `- ${s}`).join("\n")}`;
+  }
+
+  return { message, routes, suggestions: suggestions.slice(0, 3) };
+}
+
+function detectProjectType(prompt: string): string {
+  const p = prompt.toLowerCase();
+  if (p.includes("bakery") || p.includes("cafe") || p.includes("restaurant")) return "bakery landing page";
+  if (p.includes("portfolio")) return "portfolio site";
+  if (p.includes("e-commerce") || p.includes("shop") || p.includes("store")) return "e-commerce site";
+  if (p.includes("dashboard")) return "dashboard";
+  if (p.includes("blog")) return "blog";
+  if (p.includes("saas")) return "SaaS landing page";
+  if (p.includes("landing")) return "landing page";
+  return "website";
+}
+
+function getProjectEmoji(type: string): string {
+  if (type.includes("bakery")) return "🥐";
+  if (type.includes("portfolio")) return "✨";
+  if (type.includes("e-commerce") || type.includes("shop")) return "🛒";
+  if (type.includes("dashboard")) return "📊";
+  if (type.includes("blog")) return "📝";
+  if (type.includes("saas")) return "🚀";
+  return "🎨";
 }
 
 async function runBeastPipeline(ctx: PipelineContext): Promise<PipelineResult> {
   const modelsUsed: string[] = [];
   let repairAttempts = 0;
   const MAX_REPAIR_ATTEMPTS = 2;
+  const isNewProject = ctx.existingFiles.length === 0;
 
   try {
     // =======================================================================
@@ -612,13 +758,22 @@ async function runBeastPipeline(ctx: PipelineContext): Promise<PipelineResult> {
       console.log("[Beast Mode] ⚠️ Some issues remain:", validation.criticalErrors);
     }
 
+    // =======================================================================
+    // STAGE 5: PERSONA - Generate friendly response
+    // =======================================================================
+    console.log("[Beast Mode] 💬 Stage 5: Generating persona response...");
+    const personaResult = await generatePersonaResponse(ctx.prompt, files, plan, isNewProject);
+
     return {
       success: true,
       files,
       modelsUsed,
       validationPassed: validation.valid,
       repairAttempts,
-      errors: validation.criticalErrors.map(e => e.error)
+      errors: validation.criticalErrors.map(e => e.error),
+      aiMessage: personaResult.message,
+      routes: personaResult.routes,
+      suggestions: personaResult.suggestions,
     };
 
   } catch (error) {
@@ -629,7 +784,10 @@ async function runBeastPipeline(ctx: PipelineContext): Promise<PipelineResult> {
       modelsUsed,
       validationPassed: false,
       repairAttempts,
-      errors: [error instanceof Error ? error.message : "Pipeline failed"]
+      errors: [error instanceof Error ? error.message : "Pipeline failed"],
+      aiMessage: "Oops! Something went wrong while building your project. Let me try again...",
+      routes: ["/"],
+      suggestions: ["Try simplifying your request", "Check the console for errors"],
     };
   }
 }
@@ -1189,6 +1347,10 @@ serve(async (req) => {
       validationPassed: result.validationPassed,
       repairAttempts: result.repairAttempts,
       errors: result.errors,
+      // NEW: Persona response for chat display
+      aiMessage: result.aiMessage,
+      routes: result.routes,
+      suggestions: result.suggestions,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {

@@ -87,7 +87,12 @@ export default function ChatPanelV2({
                   )}
                 >
                   {message.role === 'assistant' ? (
-                    <MarkdownRenderer content={message.content} className="text-sm" />
+                    <MarkdownRenderer 
+                      content={message.content} 
+                      className="text-sm"
+                      showThinkingIndicator={false}
+                      currentActions={[]}
+                    />
                   ) : (
                     <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                   )}
