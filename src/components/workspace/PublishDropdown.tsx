@@ -152,7 +152,7 @@ export default function PublishDropdown({
                   {subdomain}
                 </span>
               )}
-              <span className="text-sm text-muted-foreground">.lovable.app</span>
+              <span className="text-sm text-muted-foreground">.buildablelabs.dev</span>
               <Button 
                 variant="ghost" 
                 size="icon" 
