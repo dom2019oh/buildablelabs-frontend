@@ -5,6 +5,9 @@ import {
   BarChart3, 
   CreditCard, 
   Settings,
+  Layout,
+  Box,
+  Palette,
 } from 'lucide-react';
 import buildableLogo from '@/assets/buildify-logo.png';
 import { cn } from '@/lib/utils';
@@ -14,6 +17,12 @@ const navItems = [
   { icon: BarChart3, label: 'Usage', href: '/dashboard/usage' },
   { icon: CreditCard, label: 'Billing', href: '/dashboard/billing' },
   { icon: Settings, label: 'Settings', href: '/dashboard/settings' },
+];
+
+const libraryItems = [
+  { icon: Layout, label: 'Templates', href: '/dashboard/templates' },
+  { icon: Box, label: 'Components', href: '/dashboard/components' },
+  { icon: Palette, label: 'Backgrounds', href: '/dashboard/backgrounds' },
 ];
 
 export default function DashboardSidebar() {
@@ -43,7 +52,7 @@ export default function DashboardSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3">
+      <nav className="flex-1 p-3 overflow-y-auto">
         <ul className="space-y-1">
           {navItems.map((item) => (
             <li key={item.label}>
@@ -61,6 +70,30 @@ export default function DashboardSidebar() {
             </li>
           ))}
         </ul>
+
+        {/* Library Section */}
+        <div className="mt-6 pt-4 border-t border-sidebar-border">
+          <span className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Library
+          </span>
+          <ul className="mt-3 space-y-1">
+            {libraryItems.map((item) => (
+              <li key={item.label}>
+                <Link
+                  to={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200",
+                    "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                    isActive(item.href) && "text-foreground bg-primary/10 border-l-2 border-primary"
+                  )}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       </nav>
 
       {/* Footer */}

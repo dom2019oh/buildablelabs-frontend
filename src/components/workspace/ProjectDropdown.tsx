@@ -6,7 +6,10 @@ import {
   HelpCircle,
   ChevronRight,
   ExternalLink,
-  Zap
+  Zap,
+  Layout,
+  Box,
+  Palette
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -14,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -111,6 +115,34 @@ export default function ProjectDropdown({ projectName, projectId }: ProjectDropd
             <Gift className="h-4 w-4" />
             Bonuses
             <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0">New</Badge>
+          </Link>
+        </DropdownMenuItem>
+        
+        <DropdownMenuSeparator />
+        
+        {/* Library Section */}
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+          Library
+        </DropdownMenuLabel>
+        
+        <DropdownMenuItem asChild className="gap-2 cursor-pointer">
+          <Link to="/dashboard/templates">
+            <Layout className="h-4 w-4" />
+            Templates
+          </Link>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem asChild className="gap-2 cursor-pointer">
+          <Link to="/dashboard/components">
+            <Box className="h-4 w-4" />
+            Components
+          </Link>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem asChild className="gap-2 cursor-pointer">
+          <Link to="/dashboard/backgrounds">
+            <Palette className="h-4 w-4" />
+            Backgrounds
           </Link>
         </DropdownMenuItem>
         
