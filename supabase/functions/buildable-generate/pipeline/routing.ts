@@ -28,9 +28,9 @@ export const AI_PROVIDERS: Record<ProviderKey, ModelConfig> = {
     name: "Gemini (Google)",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
     models: {
-      pro: "gemini-1.5-pro",
-      flash: "gemini-1.5-flash",
-      planning: "gemini-1.5-pro",
+      pro: "gemini-2.0-flash",
+      flash: "gemini-2.0-flash",
+      planning: "gemini-2.0-flash",
     },
     maxTokens: 16000,
   },
