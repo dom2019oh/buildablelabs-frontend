@@ -1,11 +1,11 @@
 // =============================================================================
-// BUILDABLE AI GENERATION - Template-Based + Streaming
+// BUILDABLE AI GENERATION - Multi-Model with Your Own API Keys
 // =============================================================================
-// Lovable-quality code generation with:
-// 1. Rich project templates as starting points
-// 2. GPT-4o for high-quality output
-// 3. Proper file structure and routes
-// 4. Comprehensive component generation
+// Uses YOUR API keys directly:
+// - GROK_API_KEY: Primary for code generation (2M context)
+// - GEMINI_API_KEY: Planning and multimodal
+// - OPENAI_API_KEY: Fallback and reasoning
+// NO Lovable AI Gateway - 100% your own credentials
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -15,21 +15,55 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Use Lovable AI Gateway for access to all models
-const LOVABLE_AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+// =============================================================================
+// AI PROVIDER CONFIGURATION - Your Own API Keys
+// =============================================================================
 
-// Model for code generation
-const MODEL = "google/gemini-2.5-pro";
+interface AIProviderConfig {
+  name: string;
+  baseUrl: string;
+  model: string;
+  maxTokens: number;
+}
+
+const AI_PROVIDERS = {
+  grok: {
+    name: "Grok (xAI)",
+    baseUrl: "https://api.x.ai/v1/chat/completions",
+    model: "grok-3-fast",
+    maxTokens: 16000,
+  },
+  gemini: {
+    name: "Gemini (Google)",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    model: "gemini-2.5-pro",
+    maxTokens: 16000,
+  },
+  openai: {
+    name: "OpenAI",
+    baseUrl: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-4o",
+    maxTokens: 16000,
+  },
+} as const;
+
+// Task-based model routing
+const TASK_ROUTING = {
+  planning: "gemini",    // Gemini excels at planning/architecture
+  coding: "grok",        // Grok with 2M context for code generation
+  debugging: "grok",     // Grok for debugging
+  reasoning: "openai",   // OpenAI for complex reasoning
+  fallback: "openai",    // OpenAI as universal fallback
+} as const;
 
 // deno-lint-ignore no-explicit-any
 type DB = SupabaseClient<any, "public", any>;
 
 // =============================================================================
-// PROJECT TEMPLATES - Complete starter code like Lovable uses
+// PROJECT TEMPLATES
 // =============================================================================
 
 const TEMPLATES = {
-  // Base CSS with design tokens
   indexCss: `@tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -79,10 +113,7 @@ const TEMPLATES = {
   --ring: 224.3 76.3% 48%;
 }
 
-* {
-  border-color: hsl(var(--border));
-}
-
+* { border-color: hsl(var(--border)); }
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
@@ -90,7 +121,6 @@ body {
 }
 `,
 
-  // Navbar component
   navbar: `import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 
@@ -101,7 +131,6 @@ interface NavbarProps {
 
 export default function Navbar({ logo = "Brand", links = [] }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
-
   const defaultLinks = links.length > 0 ? links : [
     { label: 'Home', href: '#' },
     { label: 'Features', href: '#features' },
@@ -113,19 +142,10 @@ export default function Navbar({ logo = "Brand", links = [] }: NavbarProps) {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <a href="#" className="text-xl font-bold text-foreground">
-            {logo}
-          </a>
-
-          {/* Desktop Navigation */}
+          <a href="#" className="text-xl font-bold text-foreground">{logo}</a>
           <div className="hidden md:flex items-center gap-8">
             {defaultLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
+              <a key={link.label} href={link.href} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                 {link.label}
               </a>
             ))}
@@ -133,26 +153,14 @@ export default function Navbar({ logo = "Brand", links = [] }: NavbarProps) {
               Get Started
             </button>
           </div>
-
-          {/* Mobile Menu Button */}
-          <button
-            className="md:hidden p-2"
-            onClick={() => setIsOpen(!isOpen)}
-          >
+          <button className="md:hidden p-2" onClick={() => setIsOpen(!isOpen)}>
             {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
-
-        {/* Mobile Navigation */}
         {isOpen && (
           <div className="md:hidden py-4 border-t border-border">
             {defaultLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                className="block py-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-                onClick={() => setIsOpen(false)}
-              >
+              <a key={link.label} href={link.href} className="block py-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setIsOpen(false)}>
                 {link.label}
               </a>
             ))}
@@ -167,7 +175,6 @@ export default function Navbar({ logo = "Brand", links = [] }: NavbarProps) {
 }
 `,
 
-  // Hero component
   hero: `import { ArrowRight, Sparkles } from 'lucide-react';
 
 interface HeroProps {
@@ -185,122 +192,60 @@ export default function Hero({
 }: HeroProps) {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-background via-background to-muted/30">
-      {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-1/2 -right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-1/2 -left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
       </div>
-
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8">
           <Sparkles className="h-4 w-4" />
           <span>Now in public beta</span>
         </div>
-
-        {/* Title */}
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-foreground tracking-tight mb-6">
-          {title}
-        </h1>
-
-        {/* Subtitle */}
-        <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-          {subtitle}
-        </p>
-
-        {/* CTAs */}
+        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-foreground tracking-tight mb-6">{title}</h1>
+        <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">{subtitle}</p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <a
-            href={ctaLink}
-            className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-primary-foreground bg-primary rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30"
-          >
+          <a href={ctaLink} className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-primary-foreground bg-primary rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30">
             {ctaText}
             <ArrowRight className="h-5 w-5" />
           </a>
-          <a
-            href="#features"
-            className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-foreground bg-secondary rounded-xl hover:bg-secondary/80 transition-colors"
-          >
+          <a href="#features" className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-foreground bg-secondary rounded-xl hover:bg-secondary/80 transition-colors">
             Learn More
           </a>
         </div>
-
-        {/* Trust indicators */}
-        <p className="mt-12 text-sm text-muted-foreground">
-          Trusted by 10,000+ teams worldwide
-        </p>
+        <p className="mt-12 text-sm text-muted-foreground">Trusted by 10,000+ teams worldwide</p>
       </div>
     </section>
   );
 }
 `,
 
-  // Features component
   features: `import { Zap, Shield, Globe, Layers, Code, Palette } from 'lucide-react';
 
 const features = [
-  {
-    icon: Zap,
-    title: 'Lightning Fast',
-    description: 'Built for speed with optimized performance and instant loading times.',
-  },
-  {
-    icon: Shield,
-    title: 'Secure by Default',
-    description: 'Enterprise-grade security with encryption and compliance built-in.',
-  },
-  {
-    icon: Globe,
-    title: 'Global Scale',
-    description: 'Deploy worldwide with automatic scaling and edge distribution.',
-  },
-  {
-    icon: Layers,
-    title: 'Modular Design',
-    description: 'Flexible components that work together seamlessly.',
-  },
-  {
-    icon: Code,
-    title: 'Developer First',
-    description: 'Clean APIs and comprehensive documentation for easy integration.',
-  },
-  {
-    icon: Palette,
-    title: 'Beautiful UI',
-    description: 'Stunning designs with customizable themes and dark mode support.',
-  },
+  { icon: Zap, title: 'Lightning Fast', description: 'Built for speed with optimized performance and instant loading times.' },
+  { icon: Shield, title: 'Secure by Default', description: 'Enterprise-grade security with encryption and compliance built-in.' },
+  { icon: Globe, title: 'Global Scale', description: 'Deploy worldwide with automatic scaling and edge distribution.' },
+  { icon: Layers, title: 'Modular Design', description: 'Flexible components that work together seamlessly.' },
+  { icon: Code, title: 'Developer First', description: 'Clean APIs and comprehensive documentation for easy integration.' },
+  { icon: Palette, title: 'Beautiful UI', description: 'Stunning designs with customizable themes and dark mode support.' },
 ];
 
 export default function Features() {
   return (
     <section id="features" className="py-24 bg-muted/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-            Everything You Need
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Powerful features to help you build, deploy, and scale your applications.
-          </p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">Everything You Need</h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Powerful features to help you build, deploy, and scale your applications.</p>
         </div>
-
-        {/* Features Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {features.map((feature, index) => (
-            <div
-              key={index}
-              className="group p-6 bg-card rounded-2xl border border-border hover:border-primary/50 hover:shadow-lg transition-all duration-300"
-            >
+            <div key={index} className="group p-6 bg-card rounded-2xl border border-border hover:border-primary/50 hover:shadow-lg transition-all duration-300">
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
                 <feature.icon className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                {feature.title}
-              </h3>
-              <p className="text-muted-foreground">
-                {feature.description}
-              </p>
+              <h3 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h3>
+              <p className="text-muted-foreground">{feature.description}</p>
             </div>
           ))}
         </div>
@@ -310,70 +255,28 @@ export default function Features() {
 }
 `,
 
-  // Pricing component
   pricing: `import { Check } from 'lucide-react';
 
 const plans = [
-  {
-    name: 'Starter',
-    price: '$0',
-    period: '/month',
-    description: 'Perfect for getting started',
-    features: ['Up to 3 projects', 'Basic analytics', 'Community support', '1GB storage'],
-    cta: 'Start Free',
-    popular: false,
-  },
-  {
-    name: 'Pro',
-    price: '$29',
-    period: '/month',
-    description: 'For growing businesses',
-    features: ['Unlimited projects', 'Advanced analytics', 'Priority support', '100GB storage', 'Custom domains', 'API access'],
-    cta: 'Get Started',
-    popular: true,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    description: 'For large organizations',
-    features: ['Everything in Pro', 'Dedicated support', 'SLA guarantee', 'Unlimited storage', 'SSO & SAML', 'Custom contracts'],
-    cta: 'Contact Sales',
-    popular: false,
-  },
+  { name: 'Starter', price: '$0', period: '/month', description: 'Perfect for getting started', features: ['Up to 3 projects', 'Basic analytics', 'Community support', '1GB storage'], cta: 'Start Free', popular: false },
+  { name: 'Pro', price: '$29', period: '/month', description: 'For growing businesses', features: ['Unlimited projects', 'Advanced analytics', 'Priority support', '100GB storage', 'Custom domains', 'API access'], cta: 'Get Started', popular: true },
+  { name: 'Enterprise', price: 'Custom', period: '', description: 'For large organizations', features: ['Everything in Pro', 'Dedicated support', 'SLA guarantee', 'Unlimited storage', 'SSO & SAML', 'Custom contracts'], cta: 'Contact Sales', popular: false },
 ];
 
 export default function Pricing() {
   return (
     <section id="pricing" className="py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-            Simple, Transparent Pricing
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Choose the plan that works best for you. All plans include a 14-day free trial.
-          </p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">Simple, Transparent Pricing</h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Choose the plan that works best for you. All plans include a 14-day free trial.</p>
         </div>
-
-        {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {plans.map((plan, index) => (
-            <div
-              key={index}
-              className={\`relative p-8 rounded-2xl border \${
-                plan.popular 
-                  ? 'border-primary bg-card shadow-xl scale-105' 
-                  : 'border-border bg-card/50'
-              }\`}
-            >
+            <div key={index} className={\`relative p-8 rounded-2xl border \${plan.popular ? 'border-primary bg-card shadow-xl scale-105' : 'border-border bg-card/50'}\`}>
               {plan.popular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-sm font-medium rounded-full">
-                  Most Popular
-                </div>
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-sm font-medium rounded-full">Most Popular</div>
               )}
-              
               <div className="text-center mb-8">
                 <h3 className="text-xl font-semibold text-foreground mb-2">{plan.name}</h3>
                 <p className="text-muted-foreground text-sm mb-4">{plan.description}</p>
@@ -382,7 +285,6 @@ export default function Pricing() {
                   <span className="text-muted-foreground ml-1">{plan.period}</span>
                 </div>
               </div>
-
               <ul className="space-y-4 mb-8">
                 {plan.features.map((feature, i) => (
                   <li key={i} className="flex items-center gap-3 text-sm">
@@ -391,14 +293,7 @@ export default function Pricing() {
                   </li>
                 ))}
               </ul>
-
-              <button
-                className={\`w-full py-3 px-4 rounded-xl font-medium transition-colors \${
-                  plan.popular
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                }\`}
-              >
+              <button className={\`w-full py-3 px-4 rounded-xl font-medium transition-colors \${plan.popular ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}\`}>
                 {plan.cta}
               </button>
             </div>
@@ -410,7 +305,6 @@ export default function Pricing() {
 }
 `,
 
-  // Footer component
   footer: `export default function Footer() {
   const links = {
     Product: ['Features', 'Pricing', 'Integrations', 'Changelog'],
@@ -423,50 +317,27 @@ export default function Pricing() {
     <footer className="bg-muted/30 border-t border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
-          {/* Brand */}
           <div className="col-span-2 md:col-span-1">
-            <a href="#" className="text-xl font-bold text-foreground">
-              Brand
-            </a>
-            <p className="mt-4 text-sm text-muted-foreground">
-              Building the future of web development, one project at a time.
-            </p>
+            <a href="#" className="text-xl font-bold text-foreground">Brand</a>
+            <p className="mt-4 text-sm text-muted-foreground">Building the future of web development, one project at a time.</p>
           </div>
-
-          {/* Links */}
           {Object.entries(links).map(([category, items]) => (
             <div key={category}>
               <h4 className="font-semibold text-foreground mb-4">{category}</h4>
               <ul className="space-y-3">
                 {items.map((item) => (
-                  <li key={item}>
-                    <a
-                      href="#"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {item}
-                    </a>
-                  </li>
+                  <li key={item}><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">{item}</a></li>
                 ))}
               </ul>
             </div>
           ))}
         </div>
-
         <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Brand. All rights reserved.
-          </p>
+          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} Brand. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-              Twitter
-            </a>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-              GitHub
-            </a>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
-              Discord
-            </a>
+            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">Twitter</a>
+            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">GitHub</a>
+            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">Discord</a>
           </div>
         </div>
       </div>
@@ -475,7 +346,6 @@ export default function Pricing() {
 }
 `,
 
-  // Complete Index page template
   indexPage: `import Navbar from '../components/layout/Navbar';
 import Hero from '../components/Hero';
 import Features from '../components/Features';
@@ -499,158 +369,13 @@ export default function Index() {
 };
 
 // =============================================================================
-// COMPONENT LIBRARY - Pre-built templates for AI to use
-// =============================================================================
-
-const COMPONENT_LIBRARY = {
-  navbar: {
-    name: "Glass Navbar",
-    description: "Modern glassmorphism navigation with blur effects",
-    code: `<nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/10 border-b border-white/10">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500" />
-          <span className="font-bold text-lg text-white">Brand</span>
-        </div>
-        <div className="flex items-center gap-8">
-          {['Products', 'Features', 'Pricing'].map((link) => (
-            <a key={link} href="#" className="text-sm text-gray-300 hover:text-white transition-colors">{link}</a>
-          ))}
-          <button className="px-4 py-2 text-sm font-medium rounded-lg bg-white text-black hover:bg-gray-100 transition-colors">Get Started</button>
-        </div>
-      </div>
-    </nav>`
-  },
-  hero: {
-    name: "Gradient Hero",
-    description: "Bold gradient background with animated elements",
-    code: `<section className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-black to-pink-900 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,0,255,0.3),transparent_50%)]" />
-      <div className="text-center z-10 px-6">
-        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-purple-300 text-sm mb-6">
-          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />Now in Beta
-        </span>
-        <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent">Build Something<br/>Extraordinary</h1>
-        <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">The next-generation platform for developers.</p>
-        <div className="flex items-center justify-center gap-4">
-          <button className="px-6 py-3 rounded-lg bg-white text-black font-medium hover:bg-gray-100">Start Building →</button>
-          <button className="px-6 py-3 rounded-lg border border-white/20 text-white font-medium hover:bg-white/10">Watch Demo</button>
-        </div>
-      </div>
-    </section>`
-  },
-  features: {
-    name: "Bento Grid Features",
-    description: "Modern bento-style grid layout",
-    code: `<section className="py-24 px-6 bg-black">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-4xl font-bold text-center mb-4 text-white">Why Choose Us</h2>
-        <p className="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Everything you need to build modern applications</p>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="col-span-2 p-8 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-4">⚡</div>
-            <h3 className="text-2xl font-bold mb-2 text-white">Lightning Fast</h3>
-            <p className="text-gray-400">Built for speed with optimized performance.</p>
-          </div>
-          <div className="p-8 rounded-2xl bg-white/5 border border-white/10">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4">🔒</div>
-            <h3 className="text-xl font-bold mb-2 text-white">Secure</h3>
-            <p className="text-gray-400 text-sm">Enterprise-grade security.</p>
-          </div>
-        </div>
-      </div>
-    </section>`
-  },
-  pricing: {
-    name: "Modern Pricing",
-    description: "Clean pricing cards with gradient accent",
-    code: `<section className="py-24 px-6 bg-black">
-      <h2 className="text-4xl font-bold text-center mb-4 text-white">Simple Pricing</h2>
-      <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-6 mt-16">
-        <div className="p-8 rounded-2xl bg-white/5 border border-white/10">
-          <h3 className="text-lg font-medium mb-2 text-white">Starter</h3>
-          <div className="text-4xl font-bold text-white mb-6">$9<span className="text-lg text-gray-400">/mo</span></div>
-          <button className="w-full py-3 rounded-lg border border-white/20 text-white hover:bg-white/10">Get Started</button>
-        </div>
-        <div className="p-8 rounded-2xl bg-gradient-to-b from-purple-600/20 to-pink-600/20 border border-purple-500/30 relative">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-xs font-medium text-white">Popular</div>
-          <h3 className="text-lg font-medium mb-2 text-white">Pro</h3>
-          <div className="text-4xl font-bold text-white mb-6">$29<span className="text-lg text-gray-400">/mo</span></div>
-          <button className="w-full py-3 rounded-lg bg-white text-black font-medium hover:bg-gray-100">Get Started</button>
-        </div>
-      </div>
-    </section>`
-  },
-  testimonials: {
-    name: "Testimonial Cards",
-    description: "Social proof with ratings",
-    code: `<section className="py-24 px-6 bg-black">
-      <h2 className="text-4xl font-bold text-center mb-16 text-white">Loved by Developers</h2>
-      <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
-        <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
-          <div className="flex gap-1 mb-4 text-yellow-400">★★★★★</div>
-          <p className="text-gray-300 mb-6">"Best developer tool I've used."</p>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500" />
-            <div>
-              <div className="font-medium text-sm text-white">Sarah Chen</div>
-              <div className="text-gray-400 text-xs">Developer @ Google</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>`
-  },
-  cta: {
-    name: "Gradient CTA",
-    description: "Eye-catching call-to-action",
-    code: `<section className="py-24 px-6 bg-black">
-      <div className="max-w-4xl mx-auto rounded-3xl bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500 p-12 text-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/20" />
-        <div className="relative z-10">
-          <h2 className="text-4xl font-bold mb-4 text-white">Ready to Get Started?</h2>
-          <p className="text-white/80 mb-8">Join thousands of developers building amazing things.</p>
-          <div className="flex items-center justify-center gap-4">
-            <button className="px-8 py-4 rounded-xl bg-white text-black font-semibold hover:bg-gray-100">Start Free Trial</button>
-            <button className="px-8 py-4 rounded-xl border-2 border-white/30 text-white font-medium hover:bg-white/10">Book a Demo</button>
-          </div>
-        </div>
-      </div>
-    </section>`
-  },
-  footer: {
-    name: "Modern Footer",
-    description: "Comprehensive footer with columns",
-    code: `<footer className="py-16 px-6 bg-black border-t border-white/10">
-      <div className="max-w-6xl mx-auto grid md:grid-cols-4 gap-8">
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500" />
-            <span className="font-bold text-lg text-white">Brand</span>
-          </div>
-          <p className="text-gray-400 text-sm">Building the future of web development.</p>
-        </div>
-        {['Product', 'Company', 'Legal'].map((col) => (
-          <div key={col}>
-            <h4 className="font-medium mb-4 text-white">{col}</h4>
-            <ul className="space-y-2 text-sm text-gray-400">
-              {['Link 1', 'Link 2', 'Link 3'].map((l, i) => <li key={i}><a href="#" className="hover:text-white transition-colors">{l}</a></li>)}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </footer>`
-  }
-};
-
-// =============================================================================
-// SYSTEM PROMPTS - Production quality with Library Integration
+// LIBRARY REFERENCES FOR SYSTEM PROMPT
 // =============================================================================
 
 const PAGE_LIBRARY_REF = `
-## PAGE LIBRARY — Full-page templates you can generate or adapt:
-- LOGIN: src/pages/Login.tsx — Email/password form, social buttons, gradient bg, link to sign-up
-- SIGNUP: src/pages/SignUp.tsx — Registration form, gradient bg, link to sign-in
+## PAGE LIBRARY — Full-page templates:
+- LOGIN: src/pages/Login.tsx — Email/password form, social buttons, gradient bg
+- SIGNUP: src/pages/SignUp.tsx — Registration form, gradient bg
 - DASHBOARD: src/pages/Dashboard.tsx — Sidebar nav, stats cards, welcome header
 - SETTINGS: src/pages/Settings.tsx — Avatar, profile form, save button
 - LANDING: src/pages/Index.tsx — Hero + features + pricing + footer
@@ -658,34 +383,32 @@ const PAGE_LIBRARY_REF = `
 `;
 
 const COMPONENT_LIBRARY_REF = `
-## COMPONENT LIBRARY — Pre-built patterns (use these classes/structures):
-- GLASS NAVBAR: fixed backdrop-blur-xl bg-white/5 border-b border-white/10, nav links, gradient CTA
-- GRADIENT HERO: bg-gradient-to-br from-purple-900/40 via-zinc-900 to-pink-900/30, headline, CTA buttons
-- BENTO FEATURES: grid md:grid-cols-3 gap-6, cards with icon, title, description
+## COMPONENT LIBRARY — Pre-built patterns:
+- GLASS NAVBAR: fixed backdrop-blur-xl bg-white/5 border-b border-white/10
+- GRADIENT HERO: bg-gradient-to-br from-purple-900/40 via-zinc-900 to-pink-900/30
+- BENTO FEATURES: grid md:grid-cols-3 gap-6, cards with icon/title/description
 - PRICING CARDS: 3-tier with "Popular" badge, gradient bg, check icons
 - GRADIENT CTA: bg-gradient-to-r from-purple-600/20, centered headline + button
-- SIMPLE FOOTER: py-12 bg-zinc-900 border-t border-zinc-800, brand + link columns
+- SIMPLE FOOTER: py-12 bg-zinc-900 border-t border-zinc-800
 `;
 
 const BACKGROUND_LIBRARY_REF = `
-## BACKGROUND LIBRARY — Tailwind class combos for backgrounds:
+## BACKGROUND LIBRARY — Tailwind class combos:
 - PURPLE-PINK: bg-gradient-to-br from-purple-900 via-zinc-900 to-pink-900
 - OCEAN-BLUE: bg-gradient-to-br from-blue-900 via-zinc-900 to-cyan-900
-- MESH: inline style with radial-gradients
 - DOT PATTERN: bg-zinc-900 + radial-gradient dots
 - GRID PATTERN: bg-zinc-900 + linear-gradient grid lines
 `;
 
 const ROUTE_AWARE_RULES = `
 ## ROUTE-AWARE GENERATION — CRITICAL:
-1. BEFORE creating a new page file (src/pages/*), CHECK if it already exists in the EXISTING FILES list below.
-2. If the page exists, MODIFY it instead of creating a duplicate.
-3. When adding routes, ensure App.tsx / router config is also updated.
-4. Use the PAGE LIBRARY as a reference for standard page structures.
-5. Always maintain consistent imports and file paths.
+1. BEFORE creating a new page, CHECK if it already exists in EXISTING FILES
+2. If the page exists, MODIFY it instead of creating a duplicate
+3. When adding routes, ensure App.tsx / router config is also updated
+4. Use the PAGE LIBRARY as a reference for standard page structures
 `;
 
-const BUILDABLE_SYSTEM_PROMPT = `You are Buildable — an expert AI that generates production-ready React websites.
+const BUILDABLE_SYSTEM_PROMPT = `You are Buildable AI — an expert that generates production-ready React websites.
 
 ## CRITICAL RULES:
 1. Generate COMPLETE, working files - NEVER use placeholders like "..." or "// rest of code"
@@ -693,23 +416,21 @@ const BUILDABLE_SYSTEM_PROMPT = `You are Buildable — an expert AI that generat
 3. Every component must be fully functional and self-contained
 4. Include ALL necessary imports (React, lucide-react icons, etc.)
 5. Make everything responsive (mobile-first approach)
-6. ALWAYS check if existing files exist before creating new ones - modify them instead
+6. ALWAYS check if existing files exist before creating new ones
 
 ${PAGE_LIBRARY_REF}
-
 ${COMPONENT_LIBRARY_REF}
-
 ${BACKGROUND_LIBRARY_REF}
 
 ## OUTPUT FORMAT:
 Each file must use this exact format:
-${"```"}tsx:src/path/to/Component.tsx
+\`\`\`tsx:src/path/to/Component.tsx
 // Full complete content here
-${"```"}
+\`\`\`
 
-## FILE STRUCTURE TO FOLLOW:
+## FILE STRUCTURE:
 - src/index.css - Global styles with CSS variables
-- src/pages/Index.tsx - Main landing page (imports and uses components)
+- src/pages/Index.tsx - Main landing page
 - src/pages/Dashboard.tsx - Dashboard page (if needed)
 - src/pages/Login.tsx, src/pages/SignUp.tsx - Auth pages (if needed)
 - src/components/layout/Navbar.tsx - Navigation component
@@ -717,9 +438,8 @@ ${"```"}
 - src/components/Hero.tsx - Hero section
 - src/components/Features.tsx - Features grid
 - src/components/Pricing.tsx - Pricing cards (if applicable)
-- src/components/[SectionName].tsx - Additional sections as needed
 
-## TAILWIND PATTERNS (FROM LIBRARY):
+## TAILWIND PATTERNS:
 Colors/Backgrounds:
 - bg-gradient-to-br from-purple-900 via-zinc-900 to-pink-900
 - bg-zinc-800/60, bg-white/5, bg-purple-500/20
@@ -733,24 +453,20 @@ Text:
 - text-white, text-zinc-400, text-purple-400
 - bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent
 
-Effects:
-- hover:bg-zinc-700, hover:opacity-90, transition-all
-- animate-pulse for status indicators
-
-IMPORTANT: Generate AT LEAST 5-8 complete files for any project. Never give minimal output.`;
+IMPORTANT: Generate AT LEAST 5-8 complete files for any project.`;
 
 const NEW_PROJECT_PROMPT = `${BUILDABLE_SYSTEM_PROMPT}
 
 ## YOUR TASK:
 This is a NEW PROJECT. Generate a complete, production-ready landing page with ALL of these files:
 
-1. ${"```"}src/index.css${"```"} - Complete CSS with Tailwind and CSS variables
-2. ${"```"}src/pages/Index.tsx${"```"} - Main page that imports and composes all sections
-3. ${"```"}src/components/layout/Navbar.tsx${"```"} - Responsive navigation with mobile menu
-4. ${"```"}src/components/Hero.tsx${"```"} - Stunning hero with gradient background, badge, headline, CTA
-5. ${"```"}src/components/Features.tsx${"```"} - 6-item features grid with icons
-6. ${"```"}src/components/Pricing.tsx${"```"} - 3-tier pricing comparison
-7. ${"```"}src/components/layout/Footer.tsx${"```"} - Footer with links and social icons
+1. \`\`\`src/index.css\`\`\` - Complete CSS with Tailwind and CSS variables
+2. \`\`\`src/pages/Index.tsx\`\`\` - Main page that imports and composes all sections
+3. \`\`\`src/components/layout/Navbar.tsx\`\`\` - Responsive navigation with mobile menu
+4. \`\`\`src/components/Hero.tsx\`\`\` - Stunning hero with gradient background, badge, headline, CTA
+5. \`\`\`src/components/Features.tsx\`\`\` - 6-item features grid with icons
+6. \`\`\`src/components/Pricing.tsx\`\`\` - 3-tier pricing comparison
+7. \`\`\`src/components/layout/Footer.tsx\`\`\` - Footer with links and social icons
 
 Each file must be COMPLETE and PRODUCTION-READY. No placeholders. No shortcuts.`;
 
@@ -768,7 +484,7 @@ IMPORTANT RULES FOR MODIFICATIONS:
 4. Maintain consistency with existing patterns and styles
 5. Double-check imports - don't duplicate or break existing ones
 
-Only output the files that need to be created or modified. Keep the same quality standards.`;
+Only output the files that need to be created or modified.`;
 
 // =============================================================================
 // TYPES
@@ -786,6 +502,67 @@ interface FileOperation {
   path: string;
   content: string;
   operation: "create" | "update";
+}
+
+// =============================================================================
+// AI PROVIDER FUNCTIONS - Your Own API Keys
+// =============================================================================
+
+async function callAIProvider(
+  provider: keyof typeof AI_PROVIDERS,
+  apiKey: string,
+  messages: Array<{ role: string; content: string }>,
+  stream: boolean = true
+): Promise<Response> {
+  const config = AI_PROVIDERS[provider];
+  
+  console.log(`[Buildable AI] Using ${config.name} with model ${config.model}`);
+
+  const body: Record<string, unknown> = {
+    model: config.model,
+    messages,
+    max_tokens: config.maxTokens,
+    temperature: 0.6,
+    stream,
+  };
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  // Gemini uses API key in URL, others use Bearer token
+  let url: string = config.baseUrl;
+  if (provider === "gemini") {
+    url = `${config.baseUrl}?key=${apiKey}`;
+  } else {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+
+  return fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+function getAvailableProvider(): { provider: keyof typeof AI_PROVIDERS; apiKey: string } | null {
+  // Priority: Grok > Gemini > OpenAI
+  const grokKey = Deno.env.get("GROK_API_KEY");
+  if (grokKey) {
+    return { provider: "grok", apiKey: grokKey };
+  }
+
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (geminiKey) {
+    return { provider: "gemini", apiKey: geminiKey };
+  }
+
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (openaiKey) {
+    return { provider: "openai", apiKey: openaiKey };
+  }
+
+  return null;
 }
 
 // =============================================================================
@@ -838,7 +615,8 @@ async function saveFilesToWorkspace(
   workspaceId: string,
   userId: string,
   sessionId: string | null,
-  files: FileOperation[]
+  files: FileOperation[],
+  modelUsed: string
 ) {
   const results: Array<{ path: string; success: boolean; error?: string }> = [];
 
@@ -869,7 +647,7 @@ async function saveFilesToWorkspace(
           operation: file.operation,
           file_path: file.path,
           new_content: file.content,
-          ai_model: MODEL,
+          ai_model: modelUsed,
           validated: true,
           applied: true,
           applied_at: new Date().toISOString(),
@@ -886,12 +664,11 @@ async function saveFilesToWorkspace(
 }
 
 // =============================================================================
-// STREAMING GENERATION
+// STREAMING GENERATION - Multi-Model with Fallback
 // =============================================================================
 
 async function streamGeneration(
   supabase: DB,
-  openaiApiKey: string,
   workspaceId: string,
   userId: string,
   prompt: string,
@@ -927,7 +704,6 @@ async function streamGeneration(
   if (isNewProject) {
     systemPrompt = NEW_PROJECT_PROMPT;
   } else {
-    // Include existing files for context
     let fileContext = "\n\n## EXISTING PROJECT FILES:\n";
     for (const file of existingFiles.slice(0, 10)) {
       fileContext += `\n### ${file.path}\n\`\`\`\n${file.content.slice(0, 3000)}\n\`\`\`\n`;
@@ -942,67 +718,47 @@ async function streamGeneration(
     { role: "user", content: prompt }
   ];
 
-  // Try Lovable AI Gateway first, fall back to OpenAI
-  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  // Try providers in order: Grok > Gemini > OpenAI
+  const providers: Array<{ key: keyof typeof AI_PROVIDERS; envVar: string }> = [
+    { key: "grok", envVar: "GROK_API_KEY" },
+    { key: "gemini", envVar: "GEMINI_API_KEY" },
+    { key: "openai", envVar: "OPENAI_API_KEY" },
+  ];
+
   let aiResponse: Response | null = null;
-  let modelUsed = MODEL;
+  let modelUsed = "";
+  let providerUsed = "";
 
-  if (lovableApiKey) {
-    console.log(`[Generate] Trying Lovable Gateway with model ${MODEL}`);
+  for (const { key, envVar } of providers) {
+    const apiKey = Deno.env.get(envVar);
+    if (!apiKey) continue;
+
     try {
-      aiResponse = await fetch(LOVABLE_AI_GATEWAY, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages,
-          stream: true,
-          max_tokens: 16000,
-          temperature: 0.6,
-        }),
-      });
-
-      if (!aiResponse.ok) {
-        console.log(`[Generate] Lovable Gateway failed (${aiResponse.status}), falling back to OpenAI`);
+      console.log(`[Buildable AI] Attempting ${AI_PROVIDERS[key].name}...`);
+      aiResponse = await callAIProvider(key, apiKey, messages, true);
+      
+      if (aiResponse.ok) {
+        modelUsed = AI_PROVIDERS[key].model;
+        providerUsed = AI_PROVIDERS[key].name;
+        console.log(`[Buildable AI] ✓ Using ${providerUsed} (${modelUsed})`);
+        break;
+      } else {
+        const errorText = await aiResponse.text();
+        console.log(`[Buildable AI] ${AI_PROVIDERS[key].name} failed (${aiResponse.status}): ${errorText.slice(0, 200)}`);
         aiResponse = null;
       }
     } catch (e) {
-      console.log(`[Generate] Lovable Gateway error, falling back to OpenAI:`, e);
+      console.log(`[Buildable AI] ${AI_PROVIDERS[key].name} error:`, e);
     }
   }
 
-  // Fallback to OpenAI
   if (!aiResponse) {
-    console.log(`[Generate] Using OpenAI with model gpt-4o`);
-    modelUsed = "gpt-4o";
-    aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openaiApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages,
-        stream: true,
-        max_tokens: 16000,
-        temperature: 0.6,
-      }),
-    });
-  }
-
-  if (!aiResponse.ok) {
-    const error = await aiResponse.text();
-    
     if (sessionId) {
       await supabase
         .from("generation_sessions")
         .update({ 
           status: "failed",
-          error_message: error,
+          error_message: "All AI providers failed",
           completed_at: new Date().toISOString()
         })
         .eq("id", sessionId);
@@ -1013,7 +769,7 @@ async function streamGeneration(
       .update({ status: "error" })
       .eq("id", workspaceId);
 
-    throw new Error(`AI error: ${aiResponse.status} - ${error}`);
+    throw new Error("All AI providers failed. Check your API keys: GROK_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY");
   }
 
   // Transform stream
@@ -1029,6 +785,7 @@ async function streamGeneration(
         workspaceId,
         status: "generating",
         model: modelUsed,
+        provider: providerUsed,
       };
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`));
     },
@@ -1060,12 +817,12 @@ async function streamGeneration(
         
         // If no files extracted and this is a new project, use templates
         if (files.length === 0 && existingFiles.length === 0) {
-          console.log("No files extracted from AI, using default templates");
+          console.log("[Buildable AI] No files extracted, using default templates");
           files = getDefaultFiles();
         }
 
         if (files.length > 0) {
-          await saveFilesToWorkspace(supabase, workspaceId, userId, sessionId, files);
+          await saveFilesToWorkspace(supabase, workspaceId, userId, sessionId, files, modelUsed);
         }
 
         if (sessionId) {
@@ -1074,6 +831,7 @@ async function streamGeneration(
             .update({ 
               status: "completed",
               files_generated: files.length,
+              model_used: modelUsed,
               validation_passed: true,
               completed_at: new Date().toISOString()
             })
@@ -1090,11 +848,13 @@ async function streamGeneration(
           sessionId,
           filesGenerated: files.length,
           filePaths: files.map(f => f.path),
+          model: modelUsed,
+          provider: providerUsed,
         };
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(completion)}\n\n`));
 
       } catch (err) {
-        console.error("Error in flush:", err);
+        console.error("[Buildable AI] Error in flush:", err);
         
         if (sessionId) {
           await supabase
@@ -1132,9 +892,10 @@ serve(async (req) => {
   }
 
   try {
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiApiKey) {
-      throw new Error("OPENAI_API_KEY not configured");
+    // Verify at least one AI provider is configured
+    const availableProvider = getAvailableProvider();
+    if (!availableProvider) {
+      throw new Error("No AI provider configured. Set at least one of: GROK_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY");
     }
 
     const authHeader = req.headers.get("Authorization");
@@ -1225,10 +986,9 @@ serve(async (req) => {
       );
     }
 
-    // Stream the generation
+    // Stream the generation using YOUR API keys
     return await streamGeneration(
       supabase,
-      openaiApiKey,
       wsId,
       user.id,
       prompt,
@@ -1237,7 +997,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("Generation error:", error);
+    console.error("[Buildable AI] Generation error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
