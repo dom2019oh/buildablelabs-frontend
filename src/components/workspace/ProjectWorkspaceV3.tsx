@@ -660,8 +660,8 @@ export default function ProjectWorkspaceV3() {
                   </div>
                 )}
 
-                {/* Show showcase when no content */}
-                {!previewHtml && messages.length === 0 && !isGenerating ? (
+                {/* Show showcase when no messages (new chat/project state) */}
+                {messages.length === 0 && !isGenerating ? (
                   <PreviewShowcase isVisible={true} />
                 ) : previewMode === 'sandbox' ? (
                   <WebContainerPreview

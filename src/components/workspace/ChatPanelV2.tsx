@@ -60,15 +60,8 @@ export default function ChatPanelV2({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
-              <span className="text-2xl">✨</span>
-            </div>
-            <h3 className="text-lg font-semibold mb-2 text-foreground">Start building</h3>
-            <p className="text-muted-foreground text-sm max-w-[280px]">
-              Describe what you want to create and I'll help you build it.
-            </p>
-          </div>
+          /* Empty state - just shows nothing, user focuses on input */
+          <div className="h-full" />
         ) : (
           <AnimatePresence initial={false}>
             {messages.map((message) => (
