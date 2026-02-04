@@ -1,11 +1,13 @@
 // =============================================================================
-// BUILDABLE AI GENERATION - Multi-Model with Your Own API Keys
+// BUILDABLE AI GENERATION - Multi-Model Pipeline with Railway Backend Integration
 // =============================================================================
-// Uses YOUR API keys directly:
-// - GROK_API_KEY: Primary for code generation (2M context)
-// - GEMINI_API_KEY: Planning and multimodal
-// - OPENAI_API_KEY: Fallback and reasoning
-// NO Lovable AI Gateway - 100% your own credentials
+// Full task-based model routing:
+// - GEMINI: Planning, architecture, multimodal analysis
+// - GROK: Code generation, debugging (2M context)
+// - OPENAI: Reasoning, refinement, validation fallback
+//
+// Workflow: Architect (Gemini) → Coder (Grok) → Validator (Grok/OpenAI)
+// Calls back to Railway backend at api.buildablelabs.dev when available
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -16,399 +18,199 @@ const corsHeaders = {
 };
 
 // =============================================================================
-// AI PROVIDER CONFIGURATION - Your Own API Keys
+// RAILWAY BACKEND CONFIGURATION
 // =============================================================================
 
-interface AIProviderConfig {
-  name: string;
-  baseUrl: string;
-  model: string;
-  maxTokens: number;
-}
+const RAILWAY_BACKEND_URL = "https://api.buildablelabs.dev";
+
+// =============================================================================
+// MULTI-MODEL AI CONFIGURATION - Your Own API Keys
+// =============================================================================
 
 const AI_PROVIDERS = {
   grok: {
     name: "Grok (xAI)",
     baseUrl: "https://api.x.ai/v1/chat/completions",
-    model: "grok-3-fast",
+    models: {
+      fast: "grok-3-fast",
+      code: "grok-3-fast",    // Primary coding model
+      vision: "grok-2-vision-1212",
+    },
     maxTokens: 16000,
+    contextWindow: 2_000_000, // 2M context!
   },
   gemini: {
     name: "Gemini (Google)",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    model: "gemini-2.5-pro",
+    models: {
+      pro: "gemini-2.5-pro",
+      flash: "gemini-2.5-flash",
+      planning: "gemini-2.5-pro",     // Best for architecture
+      multimodal: "gemini-2.5-pro",
+    },
     maxTokens: 16000,
+    contextWindow: 2_000_000,
   },
   openai: {
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1/chat/completions",
-    model: "gpt-4o",
+    models: {
+      gpt4o: "gpt-4o",
+      reasoning: "gpt-4o",    // Best for complex reasoning
+      mini: "gpt-4o-mini",    // Fast fallback
+    },
     maxTokens: 16000,
+    contextWindow: 128_000,
   },
 } as const;
 
-// Task-based model routing
+// Task-based model routing - matches your backend architecture
 const TASK_ROUTING = {
-  planning: "gemini",    // Gemini excels at planning/architecture
-  coding: "grok",        // Grok with 2M context for code generation
-  debugging: "grok",     // Grok for debugging
-  reasoning: "openai",   // OpenAI for complex reasoning
-  fallback: "openai",    // OpenAI as universal fallback
+  planning: { provider: "gemini", model: "planning", fallback: { provider: "openai", model: "reasoning" } },
+  coding: { provider: "grok", model: "code", fallback: { provider: "openai", model: "gpt4o" } },
+  debugging: { provider: "grok", model: "code", fallback: { provider: "openai", model: "gpt4o" } },
+  reasoning: { provider: "openai", model: "reasoning", fallback: { provider: "gemini", model: "pro" } },
+  validation: { provider: "grok", model: "fast", fallback: { provider: "openai", model: "mini" } },
+  multimodal: { provider: "gemini", model: "multimodal", fallback: { provider: "grok", model: "vision" } },
+  refinement: { provider: "openai", model: "reasoning", fallback: { provider: "grok", model: "code" } },
 } as const;
+
+type TaskType = keyof typeof TASK_ROUTING;
+type ProviderKey = keyof typeof AI_PROVIDERS;
 
 // deno-lint-ignore no-explicit-any
 type DB = SupabaseClient<any, "public", any>;
 
 // =============================================================================
-// PROJECT TEMPLATES
+// AI PROVIDER CALL FUNCTION
 // =============================================================================
 
-const TEMPLATES = {
-  indexCss: `@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 84% 4.9%;
-  --primary: 221.2 83.2% 53.3%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 221.2 83.2% 53.3%;
-  --radius: 0.5rem;
+interface AICallOptions {
+  task: TaskType;
+  messages: Array<{ role: string; content: string }>;
+  stream?: boolean;
+  maxTokens?: number;
+  temperature?: number;
 }
 
-.dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
-}
-
-* { border-color: hsl(var(--border)); }
-body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: system-ui, -apple-system, sans-serif;
-}
-`,
-
-  navbar: `import { useState } from 'react';
-import { Menu, X } from 'lucide-react';
-
-interface NavbarProps {
-  logo?: string;
-  links?: Array<{ label: string; href: string }>;
-}
-
-export default function Navbar({ logo = "Brand", links = [] }: NavbarProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const defaultLinks = links.length > 0 ? links : [
-    { label: 'Home', href: '#' },
-    { label: 'Features', href: '#features' },
-    { label: 'Pricing', href: '#pricing' },
-    { label: 'Contact', href: '#contact' },
-  ];
-
-  return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <a href="#" className="text-xl font-bold text-foreground">{logo}</a>
-          <div className="hidden md:flex items-center gap-8">
-            {defaultLinks.map((link) => (
-              <a key={link.label} href={link.href} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-                {link.label}
-              </a>
-            ))}
-            <button className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-lg hover:bg-primary/90 transition-colors">
-              Get Started
-            </button>
-          </div>
-          <button className="md:hidden p-2" onClick={() => setIsOpen(!isOpen)}>
-            {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
-        </div>
-        {isOpen && (
-          <div className="md:hidden py-4 border-t border-border">
-            {defaultLinks.map((link) => (
-              <a key={link.label} href={link.href} className="block py-2 text-sm font-medium text-muted-foreground hover:text-foreground" onClick={() => setIsOpen(false)}>
-                {link.label}
-              </a>
-            ))}
-            <button className="w-full mt-4 px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-lg">
-              Get Started
-            </button>
-          </div>
-        )}
-      </div>
-    </nav>
-  );
-}
-`,
-
-  hero: `import { ArrowRight, Sparkles } from 'lucide-react';
-
-interface HeroProps {
-  title?: string;
-  subtitle?: string;
-  ctaText?: string;
-  ctaLink?: string;
-}
-
-export default function Hero({
-  title = "Build Something Amazing",
-  subtitle = "Create beautiful, responsive websites in minutes with our powerful platform. No coding required.",
-  ctaText = "Get Started Free",
-  ctaLink = "#"
-}: HeroProps) {
-  return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-background via-background to-muted/30">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-1/2 -right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-1/2 -left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-      </div>
-      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8">
-          <Sparkles className="h-4 w-4" />
-          <span>Now in public beta</span>
-        </div>
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-foreground tracking-tight mb-6">{title}</h1>
-        <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">{subtitle}</p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <a href={ctaLink} className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-primary-foreground bg-primary rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30">
-            {ctaText}
-            <ArrowRight className="h-5 w-5" />
-          </a>
-          <a href="#features" className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-foreground bg-secondary rounded-xl hover:bg-secondary/80 transition-colors">
-            Learn More
-          </a>
-        </div>
-        <p className="mt-12 text-sm text-muted-foreground">Trusted by 10,000+ teams worldwide</p>
-      </div>
-    </section>
-  );
-}
-`,
-
-  features: `import { Zap, Shield, Globe, Layers, Code, Palette } from 'lucide-react';
-
-const features = [
-  { icon: Zap, title: 'Lightning Fast', description: 'Built for speed with optimized performance and instant loading times.' },
-  { icon: Shield, title: 'Secure by Default', description: 'Enterprise-grade security with encryption and compliance built-in.' },
-  { icon: Globe, title: 'Global Scale', description: 'Deploy worldwide with automatic scaling and edge distribution.' },
-  { icon: Layers, title: 'Modular Design', description: 'Flexible components that work together seamlessly.' },
-  { icon: Code, title: 'Developer First', description: 'Clean APIs and comprehensive documentation for easy integration.' },
-  { icon: Palette, title: 'Beautiful UI', description: 'Stunning designs with customizable themes and dark mode support.' },
-];
-
-export default function Features() {
-  return (
-    <section id="features" className="py-24 bg-muted/30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">Everything You Need</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Powerful features to help you build, deploy, and scale your applications.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {features.map((feature, index) => (
-            <div key={index} className="group p-6 bg-card rounded-2xl border border-border hover:border-primary/50 hover:shadow-lg transition-all duration-300">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
-                <feature.icon className="h-6 w-6 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h3>
-              <p className="text-muted-foreground">{feature.description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-`,
-
-  pricing: `import { Check } from 'lucide-react';
-
-const plans = [
-  { name: 'Starter', price: '$0', period: '/month', description: 'Perfect for getting started', features: ['Up to 3 projects', 'Basic analytics', 'Community support', '1GB storage'], cta: 'Start Free', popular: false },
-  { name: 'Pro', price: '$29', period: '/month', description: 'For growing businesses', features: ['Unlimited projects', 'Advanced analytics', 'Priority support', '100GB storage', 'Custom domains', 'API access'], cta: 'Get Started', popular: true },
-  { name: 'Enterprise', price: 'Custom', period: '', description: 'For large organizations', features: ['Everything in Pro', 'Dedicated support', 'SLA guarantee', 'Unlimited storage', 'SSO & SAML', 'Custom contracts'], cta: 'Contact Sales', popular: false },
-];
-
-export default function Pricing() {
-  return (
-    <section id="pricing" className="py-24">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">Simple, Transparent Pricing</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Choose the plan that works best for you. All plans include a 14-day free trial.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {plans.map((plan, index) => (
-            <div key={index} className={\`relative p-8 rounded-2xl border \${plan.popular ? 'border-primary bg-card shadow-xl scale-105' : 'border-border bg-card/50'}\`}>
-              {plan.popular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-sm font-medium rounded-full">Most Popular</div>
-              )}
-              <div className="text-center mb-8">
-                <h3 className="text-xl font-semibold text-foreground mb-2">{plan.name}</h3>
-                <p className="text-muted-foreground text-sm mb-4">{plan.description}</p>
-                <div className="flex items-baseline justify-center">
-                  <span className="text-4xl font-bold text-foreground">{plan.price}</span>
-                  <span className="text-muted-foreground ml-1">{plan.period}</span>
-                </div>
-              </div>
-              <ul className="space-y-4 mb-8">
-                {plan.features.map((feature, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0" />
-                    <span className="text-muted-foreground">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <button className={\`w-full py-3 px-4 rounded-xl font-medium transition-colors \${plan.popular ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}\`}>
-                {plan.cta}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-`,
-
-  footer: `export default function Footer() {
-  const links = {
-    Product: ['Features', 'Pricing', 'Integrations', 'Changelog'],
-    Company: ['About', 'Blog', 'Careers', 'Press'],
-    Resources: ['Documentation', 'Help Center', 'Community', 'Contact'],
-    Legal: ['Privacy', 'Terms', 'Security', 'Cookies'],
+async function callAI(options: AICallOptions): Promise<Response> {
+  const { task, messages, stream = true, maxTokens, temperature = 0.6 } = options;
+  const routing = TASK_ROUTING[task];
+  
+  // Get primary provider config
+  const primaryProvider = routing.provider as ProviderKey;
+  const primaryConfig = AI_PROVIDERS[primaryProvider];
+  const primaryModel = primaryConfig.models[routing.model as keyof typeof primaryConfig.models];
+  
+  // Get API keys
+  const apiKeys: Record<ProviderKey, string | undefined> = {
+    grok: Deno.env.get("GROK_API_KEY"),
+    gemini: Deno.env.get("GEMINI_API_KEY"),
+    openai: Deno.env.get("OPENAI_API_KEY"),
   };
 
-  return (
-    <footer className="bg-muted/30 border-t border-border">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
-          <div className="col-span-2 md:col-span-1">
-            <a href="#" className="text-xl font-bold text-foreground">Brand</a>
-            <p className="mt-4 text-sm text-muted-foreground">Building the future of web development, one project at a time.</p>
-          </div>
-          {Object.entries(links).map(([category, items]) => (
-            <div key={category}>
-              <h4 className="font-semibold text-foreground mb-4">{category}</h4>
-              <ul className="space-y-3">
-                {items.map((item) => (
-                  <li key={item}><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">{item}</a></li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} Brand. All rights reserved.</p>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">Twitter</a>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">GitHub</a>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">Discord</a>
-          </div>
-        </div>
-      </div>
-    </footer>
-  );
-}
-`,
+  // Try providers in order: primary → fallback → any available
+  const providersToTry: Array<{ provider: ProviderKey; model: string }> = [];
+  
+  // Add primary if available
+  if (apiKeys[primaryProvider]) {
+    providersToTry.push({ provider: primaryProvider, model: primaryModel });
+  }
+  
+  // Add fallback if available
+  if (routing.fallback) {
+    const fallbackProvider = routing.fallback.provider as ProviderKey;
+    if (apiKeys[fallbackProvider]) {
+      const fallbackConfig = AI_PROVIDERS[fallbackProvider];
+      const fallbackModel = fallbackConfig.models[routing.fallback.model as keyof typeof fallbackConfig.models];
+      providersToTry.push({ provider: fallbackProvider, model: fallbackModel });
+    }
+  }
+  
+  // Add any remaining available providers
+  for (const [key, apiKey] of Object.entries(apiKeys)) {
+    if (apiKey && !providersToTry.find(p => p.provider === key)) {
+      const config = AI_PROVIDERS[key as ProviderKey];
+      const defaultModel = Object.values(config.models)[0];
+      providersToTry.push({ provider: key as ProviderKey, model: defaultModel });
+    }
+  }
 
-  indexPage: `import Navbar from '../components/layout/Navbar';
-import Hero from '../components/Hero';
-import Features from '../components/Features';
-import Pricing from '../components/Pricing';
-import Footer from '../components/layout/Footer';
+  if (providersToTry.length === 0) {
+    throw new Error("No AI providers configured. Set GROK_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY");
+  }
 
-export default function Index() {
-  return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main>
-        <Hero />
-        <Features />
-        <Pricing />
-      </main>
-      <Footer />
-    </div>
-  );
+  // Try each provider
+  for (const { provider, model } of providersToTry) {
+    const config = AI_PROVIDERS[provider];
+    const apiKey = apiKeys[provider]!;
+    
+    console.log(`[Buildable AI] Task: ${task} → Trying ${config.name} (${model})`);
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      let url: string = config.baseUrl;
+      if (provider === "gemini") {
+        url = `${config.baseUrl}?key=${apiKey}`;
+      } else {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: maxTokens || config.maxTokens,
+          temperature,
+          stream,
+        }),
+      });
+
+      if (response.ok) {
+        console.log(`[Buildable AI] ✓ Using ${config.name} (${model}) for ${task}`);
+        return response;
+      }
+
+      const errorText = await response.text();
+      console.log(`[Buildable AI] ${config.name} failed (${response.status}): ${errorText.slice(0, 200)}`);
+    } catch (e) {
+      console.log(`[Buildable AI] ${config.name} error:`, e);
+    }
+  }
+
+  throw new Error(`All AI providers failed for task: ${task}`);
 }
-`,
-};
 
 // =============================================================================
-// LIBRARY REFERENCES FOR SYSTEM PROMPT
+// SYSTEM PROMPTS
 // =============================================================================
 
-const PAGE_LIBRARY_REF = `
-## PAGE LIBRARY — Full-page templates:
-- LOGIN: src/pages/Login.tsx — Email/password form, social buttons, gradient bg
-- SIGNUP: src/pages/SignUp.tsx — Registration form, gradient bg
-- DASHBOARD: src/pages/Dashboard.tsx — Sidebar nav, stats cards, welcome header
-- SETTINGS: src/pages/Settings.tsx — Avatar, profile form, save button
-- LANDING: src/pages/Index.tsx — Hero + features + pricing + footer
-- 404: src/pages/NotFound.tsx — Friendly not-found with home link
-`;
+const ARCHITECT_PROMPT = `You are the Buildable Architect — an expert at analyzing user requirements and creating detailed project plans.
 
-const COMPONENT_LIBRARY_REF = `
-## COMPONENT LIBRARY — Pre-built patterns:
-- GLASS NAVBAR: fixed backdrop-blur-xl bg-white/5 border-b border-white/10
-- GRADIENT HERO: bg-gradient-to-br from-purple-900/40 via-zinc-900 to-pink-900/30
-- BENTO FEATURES: grid md:grid-cols-3 gap-6, cards with icon/title/description
-- PRICING CARDS: 3-tier with "Popular" badge, gradient bg, check icons
-- GRADIENT CTA: bg-gradient-to-r from-purple-600/20, centered headline + button
-- SIMPLE FOOTER: py-12 bg-zinc-900 border-t border-zinc-800
-`;
+Your job is to:
+1. Understand the user's intent deeply
+2. Break down the project into specific files and components
+3. Identify the right patterns from the library
+4. Create a structured plan for the Coder to follow
 
-const BACKGROUND_LIBRARY_REF = `
-## BACKGROUND LIBRARY — Tailwind class combos:
-- PURPLE-PINK: bg-gradient-to-br from-purple-900 via-zinc-900 to-pink-900
-- OCEAN-BLUE: bg-gradient-to-br from-blue-900 via-zinc-900 to-cyan-900
-- DOT PATTERN: bg-zinc-900 + radial-gradient dots
-- GRID PATTERN: bg-zinc-900 + linear-gradient grid lines
-`;
+Output a JSON plan with this structure:
+{
+  "intent": "brief summary of what user wants",
+  "files": [
+    { "path": "src/pages/Index.tsx", "action": "create", "description": "Main landing page" },
+    { "path": "src/components/Hero.tsx", "action": "create", "description": "Hero section with CTA" }
+  ],
+  "patterns": ["glass-navbar", "gradient-hero", "bento-features"],
+  "dependencies": [],
+  "notes": "any special considerations"
+}`;
 
-const ROUTE_AWARE_RULES = `
-## ROUTE-AWARE GENERATION — CRITICAL:
-1. BEFORE creating a new page, CHECK if it already exists in EXISTING FILES
-2. If the page exists, MODIFY it instead of creating a duplicate
-3. When adding routes, ensure App.tsx / router config is also updated
-4. Use the PAGE LIBRARY as a reference for standard page structures
-`;
-
-const BUILDABLE_SYSTEM_PROMPT = `You are Buildable AI — an expert that generates production-ready React websites.
+const CODER_PROMPT = `You are the Buildable Coder — an expert React/TypeScript developer.
 
 ## CRITICAL RULES:
 1. Generate COMPLETE, working files - NEVER use placeholders like "..." or "// rest of code"
@@ -416,11 +218,6 @@ const BUILDABLE_SYSTEM_PROMPT = `You are Buildable AI — an expert that generat
 3. Every component must be fully functional and self-contained
 4. Include ALL necessary imports (React, lucide-react icons, etc.)
 5. Make everything responsive (mobile-first approach)
-6. ALWAYS check if existing files exist before creating new ones
-
-${PAGE_LIBRARY_REF}
-${COMPONENT_LIBRARY_REF}
-${BACKGROUND_LIBRARY_REF}
 
 ## OUTPUT FORMAT:
 Each file must use this exact format:
@@ -428,74 +225,53 @@ Each file must use this exact format:
 // Full complete content here
 \`\`\`
 
-## FILE STRUCTURE:
-- src/index.css - Global styles with CSS variables
-- src/pages/Index.tsx - Main landing page
-- src/pages/Dashboard.tsx - Dashboard page (if needed)
-- src/pages/Login.tsx, src/pages/SignUp.tsx - Auth pages (if needed)
-- src/components/layout/Navbar.tsx - Navigation component
-- src/components/layout/Footer.tsx - Footer component  
-- src/components/Hero.tsx - Hero section
-- src/components/Features.tsx - Features grid
-- src/components/Pricing.tsx - Pricing cards (if applicable)
-
 ## TAILWIND PATTERNS:
-Colors/Backgrounds:
 - bg-gradient-to-br from-purple-900 via-zinc-900 to-pink-900
-- bg-zinc-800/60, bg-white/5, bg-purple-500/20
-- backdrop-blur-xl, bg-black/20
-
-Borders/Cards:
-- border border-zinc-700, border-white/10, border-purple-500/50
-- rounded-2xl, rounded-xl
-
-Text:
+- backdrop-blur-xl, bg-white/5, border-white/10
 - text-white, text-zinc-400, text-purple-400
-- bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent
+- rounded-2xl, rounded-xl
+- hover:bg-zinc-700, transition-all
 
-IMPORTANT: Generate AT LEAST 5-8 complete files for any project.`;
+## FILE STRUCTURE:
+- src/pages/Index.tsx - Main landing page
+- src/pages/Dashboard.tsx - Dashboard page
+- src/components/layout/Navbar.tsx - Navigation
+- src/components/layout/Footer.tsx - Footer
+- src/components/Hero.tsx, Features.tsx, Pricing.tsx - Sections
 
-const NEW_PROJECT_PROMPT = `${BUILDABLE_SYSTEM_PROMPT}
+Generate AT LEAST 5-8 complete files for any project.`;
 
-## YOUR TASK:
-This is a NEW PROJECT. Generate a complete, production-ready landing page with ALL of these files:
+const VALIDATOR_PROMPT = `You are the Buildable Validator — an expert at code review and quality assurance.
 
-1. \`\`\`src/index.css\`\`\` - Complete CSS with Tailwind and CSS variables
-2. \`\`\`src/pages/Index.tsx\`\`\` - Main page that imports and composes all sections
-3. \`\`\`src/components/layout/Navbar.tsx\`\`\` - Responsive navigation with mobile menu
-4. \`\`\`src/components/Hero.tsx\`\`\` - Stunning hero with gradient background, badge, headline, CTA
-5. \`\`\`src/components/Features.tsx\`\`\` - 6-item features grid with icons
-6. \`\`\`src/components/Pricing.tsx\`\`\` - 3-tier pricing comparison
-7. \`\`\`src/components/layout/Footer.tsx\`\`\` - Footer with links and social icons
+Check the generated code for:
+1. Syntax errors
+2. Missing imports
+3. Broken references
+4. TypeScript errors
+5. Incomplete implementations
 
-Each file must be COMPLETE and PRODUCTION-READY. No placeholders. No shortcuts.`;
-
-const MODIFY_PROJECT_PROMPT = `${BUILDABLE_SYSTEM_PROMPT}
-
-${ROUTE_AWARE_RULES}
-
-## YOUR TASK:
-Modify the existing project based on the user's request. You have access to the current files below.
-
-IMPORTANT RULES FOR MODIFICATIONS:
-1. REVIEW all existing files first to understand the current structure
-2. Only create NEW files if they don't already exist
-3. When modifying, keep existing code and add/change only what's needed
-4. Maintain consistency with existing patterns and styles
-5. Double-check imports - don't duplicate or break existing ones
-
-Only output the files that need to be created or modified.`;
+If you find issues, output fixes. If code is good, output: {"valid": true, "issues": []}`;
 
 // =============================================================================
-// TYPES
+// MULTI-STAGE PIPELINE
 // =============================================================================
 
-interface GenerateRequest {
-  projectId: string;
+interface PipelineContext {
+  supabase: DB;
   workspaceId: string;
+  userId: string;
   prompt: string;
-  conversationHistory?: Array<{ role: string; content: string }>;
-  existingFiles?: Array<{ path: string; content: string }>;
+  existingFiles: Array<{ path: string; content: string }>;
+  history: Array<{ role: string; content: string }>;
+  sessionId: string | null;
+}
+
+interface PipelineResult {
+  success: boolean;
+  files: FileOperation[];
+  plan?: unknown;
+  modelsUsed: string[];
+  errors?: string[];
 }
 
 interface FileOperation {
@@ -504,65 +280,155 @@ interface FileOperation {
   operation: "create" | "update";
 }
 
-// =============================================================================
-// AI PROVIDER FUNCTIONS - Your Own API Keys
-// =============================================================================
-
-async function callAIProvider(
-  provider: keyof typeof AI_PROVIDERS,
-  apiKey: string,
-  messages: Array<{ role: string; content: string }>,
-  stream: boolean = true
-): Promise<Response> {
-  const config = AI_PROVIDERS[provider];
+// Stage 1: Architect (Gemini) - Analyze and plan
+async function runArchitect(ctx: PipelineContext): Promise<{ plan: unknown; model: string }> {
+  console.log("[Pipeline] Stage 1: Architect (Planning)");
   
-  console.log(`[Buildable AI] Using ${config.name} with model ${config.model}`);
+  const messages = [
+    { role: "system", content: ARCHITECT_PROMPT },
+    { role: "user", content: `User request: ${ctx.prompt}\n\nExisting files: ${ctx.existingFiles.map(f => f.path).join(", ") || "None (new project)"}` },
+  ];
 
-  const body: Record<string, unknown> = {
-    model: config.model,
-    messages,
-    max_tokens: config.maxTokens,
-    temperature: 0.6,
-    stream,
-  };
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  // Gemini uses API key in URL, others use Bearer token
-  let url: string = config.baseUrl;
-  if (provider === "gemini") {
-    url = `${config.baseUrl}?key=${apiKey}`;
-  } else {
-    headers["Authorization"] = `Bearer ${apiKey}`;
+  const response = await callAI({ task: "planning", messages, stream: false });
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || "";
+  
+  // Try to parse as JSON, fallback to raw content
+  let plan;
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    plan = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: content };
+  } catch {
+    plan = { raw: content };
   }
 
-  return fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  return { plan, model: data.model || "gemini-2.5-pro" };
 }
 
-function getAvailableProvider(): { provider: keyof typeof AI_PROVIDERS; apiKey: string } | null {
-  // Priority: Grok > Gemini > OpenAI
-  const grokKey = Deno.env.get("GROK_API_KEY");
-  if (grokKey) {
-    return { provider: "grok", apiKey: grokKey };
+// Stage 2: Coder (Grok) - Generate code
+async function runCoder(ctx: PipelineContext, plan: unknown): Promise<{ content: string; model: string }> {
+  console.log("[Pipeline] Stage 2: Coder (Generating)");
+  
+  let contextPrompt = CODER_PROMPT;
+  
+  // Add existing files context
+  if (ctx.existingFiles.length > 0) {
+    contextPrompt += "\n\n## EXISTING PROJECT FILES:\n";
+    for (const file of ctx.existingFiles.slice(0, 10)) {
+      contextPrompt += `\n### ${file.path}\n\`\`\`\n${file.content.slice(0, 2000)}\n\`\`\`\n`;
+    }
   }
 
-  const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  if (geminiKey) {
-    return { provider: "gemini", apiKey: geminiKey };
-  }
+  const messages = [
+    { role: "system", content: contextPrompt },
+    ...ctx.history.slice(-4),
+    { role: "user", content: `Plan: ${JSON.stringify(plan)}\n\nUser request: ${ctx.prompt}\n\nGenerate all required files now.` },
+  ];
 
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  if (openaiKey) {
-    return { provider: "openai", apiKey: openaiKey };
-  }
+  const response = await callAI({ task: "coding", messages, stream: false });
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || "";
 
-  return null;
+  return { content, model: data.model || "grok-3-fast" };
+}
+
+// Stage 3: Validator (Grok/OpenAI) - Validate code
+async function runValidator(ctx: PipelineContext, files: FileOperation[]): Promise<{ valid: boolean; issues: string[]; model: string }> {
+  console.log("[Pipeline] Stage 3: Validator (Checking)");
+  
+  const filesSummary = files.map(f => `${f.path}:\n${f.content.slice(0, 500)}...`).join("\n\n");
+  
+  const messages = [
+    { role: "system", content: VALIDATOR_PROMPT },
+    { role: "user", content: `Validate these files:\n\n${filesSummary}` },
+  ];
+
+  try {
+    const response = await callAI({ task: "validation", messages, stream: false });
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    
+    // Try to parse validation result
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        return { valid: result.valid ?? true, issues: result.issues || [], model: data.model || "grok-3-fast" };
+      }
+    } catch {}
+    
+    // If no issues found in text, assume valid
+    return { valid: true, issues: [], model: data.model || "grok-3-fast" };
+  } catch (e) {
+    console.log("[Pipeline] Validator skipped due to error:", e);
+    return { valid: true, issues: [], model: "skipped" };
+  }
+}
+
+// Run full pipeline
+async function runPipeline(ctx: PipelineContext): Promise<PipelineResult> {
+  const modelsUsed: string[] = [];
+  
+  try {
+    // Update session status
+    if (ctx.sessionId) {
+      await ctx.supabase
+        .from("generation_sessions")
+        .update({ status: "planning" })
+        .eq("id", ctx.sessionId);
+    }
+
+    // Stage 1: Architect
+    const { plan, model: architectModel } = await runArchitect(ctx);
+    modelsUsed.push(`Architect: ${architectModel}`);
+    
+    if (ctx.sessionId) {
+      await ctx.supabase
+        .from("generation_sessions")
+        .update({ status: "generating", plan })
+        .eq("id", ctx.sessionId);
+    }
+
+    // Stage 2: Coder
+    const { content, model: coderModel } = await runCoder(ctx, plan);
+    modelsUsed.push(`Coder: ${coderModel}`);
+    
+    // Extract files from code
+    const files = extractFiles(content);
+    
+    // If no files extracted and new project, use defaults
+    if (files.length === 0 && ctx.existingFiles.length === 0) {
+      console.log("[Pipeline] No files extracted, using defaults");
+      const defaultFiles = getDefaultFiles();
+      return { success: true, files: defaultFiles, plan, modelsUsed };
+    }
+
+    if (ctx.sessionId) {
+      await ctx.supabase
+        .from("generation_sessions")
+        .update({ status: "validating", files_generated: files.length })
+        .eq("id", ctx.sessionId);
+    }
+
+    // Stage 3: Validator
+    const { valid, issues, model: validatorModel } = await runValidator(ctx, files);
+    modelsUsed.push(`Validator: ${validatorModel}`);
+    
+    if (!valid && issues.length > 0) {
+      console.log("[Pipeline] Validation issues:", issues);
+    }
+
+    return { success: true, files, plan, modelsUsed, errors: issues.length > 0 ? issues : undefined };
+
+  } catch (error) {
+    console.error("[Pipeline] Error:", error);
+    return { 
+      success: false, 
+      files: [], 
+      modelsUsed,
+      errors: [error instanceof Error ? error.message : "Pipeline failed"]
+    };
+  }
 }
 
 // =============================================================================
@@ -579,11 +445,7 @@ function extractFiles(response: string): FileOperation[] {
     const content = match[3];
 
     if (path && content && path.includes("/")) {
-      operations.push({
-        path,
-        content: content.trim(),
-        operation: "create",
-      });
+      operations.push({ path, content: content.trim(), operation: "create" });
     }
   }
 
@@ -591,20 +453,157 @@ function extractFiles(response: string): FileOperation[] {
 }
 
 // =============================================================================
-// GENERATE DEFAULT FILES (Templates)
+// DEFAULT FILES (Templates)
 // =============================================================================
 
 function getDefaultFiles(): FileOperation[] {
   return [
-    { path: "src/index.css", content: TEMPLATES.indexCss, operation: "create" },
-    { path: "src/components/layout/Navbar.tsx", content: TEMPLATES.navbar, operation: "create" },
-    { path: "src/components/Hero.tsx", content: TEMPLATES.hero, operation: "create" },
-    { path: "src/components/Features.tsx", content: TEMPLATES.features, operation: "create" },
-    { path: "src/components/Pricing.tsx", content: TEMPLATES.pricing, operation: "create" },
-    { path: "src/components/layout/Footer.tsx", content: TEMPLATES.footer, operation: "create" },
-    { path: "src/pages/Index.tsx", content: TEMPLATES.indexPage, operation: "create" },
+    { path: "src/index.css", content: DEFAULT_CSS, operation: "create" },
+    { path: "src/components/layout/Navbar.tsx", content: DEFAULT_NAVBAR, operation: "create" },
+    { path: "src/components/Hero.tsx", content: DEFAULT_HERO, operation: "create" },
+    { path: "src/components/Features.tsx", content: DEFAULT_FEATURES, operation: "create" },
+    { path: "src/pages/Index.tsx", content: DEFAULT_INDEX, operation: "create" },
   ];
 }
+
+const DEFAULT_CSS = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --border: 214.3 31.8% 91.4%;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --primary: 217.2 91.2% 59.8%;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}`;
+
+const DEFAULT_NAVBAR = `import { useState } from 'react';
+import { Menu, X } from 'lucide-react';
+
+export default function Navbar() {
+  const [isOpen, setIsOpen] = useState(false);
+  const links = ['Home', 'Features', 'Pricing', 'Contact'];
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <a href="#" className="text-xl font-bold">Brand</a>
+          <div className="hidden md:flex items-center gap-8">
+            {links.map((link) => (
+              <a key={link} href={\`#\${link.toLowerCase()}\`} className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
+                {link}
+              </a>
+            ))}
+            <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+              Get Started
+            </button>
+          </div>
+          <button className="md:hidden p-2" onClick={() => setIsOpen(!isOpen)}>
+            {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
+      </div>
+    </nav>
+  );
+}`;
+
+const DEFAULT_HERO = `import { ArrowRight, Sparkles } from 'lucide-react';
+
+export default function Hero() {
+  return (
+    <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-b from-white via-blue-50/50 to-white dark:from-zinc-900 dark:via-blue-950/20 dark:to-zinc-900">
+      <div className="max-w-5xl mx-auto px-4 text-center">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-medium mb-8">
+          <Sparkles className="h-4 w-4" />
+          <span>Now in public beta</span>
+        </div>
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
+          Build Something
+          <span className="block bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Amazing</span>
+        </h1>
+        <p className="text-xl text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto mb-10">
+          Create beautiful, responsive websites in minutes with our powerful AI-driven platform.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <button className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors shadow-lg">
+            Get Started Free
+            <ArrowRight className="h-5 w-5" />
+          </button>
+          <button className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-zinc-900 dark:text-white bg-zinc-100 dark:bg-zinc-800 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+            Learn More
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}`;
+
+const DEFAULT_FEATURES = `import { Zap, Shield, Globe, Code } from 'lucide-react';
+
+const features = [
+  { icon: Zap, title: 'Lightning Fast', description: 'Built for speed with optimized performance.' },
+  { icon: Shield, title: 'Secure', description: 'Enterprise-grade security built-in.' },
+  { icon: Globe, title: 'Global Scale', description: 'Deploy worldwide with edge distribution.' },
+  { icon: Code, title: 'Developer First', description: 'Clean APIs and great documentation.' },
+];
+
+export default function Features() {
+  return (
+    <section id="features" className="py-24 bg-zinc-50 dark:bg-zinc-900/50">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl font-bold mb-4">Everything You Need</h2>
+          <p className="text-lg text-zinc-600 dark:text-zinc-400 max-w-2xl mx-auto">
+            Powerful features to help you build and scale.
+          </p>
+        </div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          {features.map((feature, i) => (
+            <div key={i} className="p-6 bg-white dark:bg-zinc-800 rounded-2xl border border-zinc-200 dark:border-zinc-700 hover:shadow-lg transition-shadow">
+              <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
+                <feature.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+              <p className="text-zinc-600 dark:text-zinc-400">{feature.description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}`;
+
+const DEFAULT_INDEX = `import Navbar from '../components/layout/Navbar';
+import Hero from '../components/Hero';
+import Features from '../components/Features';
+
+export default function Index() {
+  return (
+    <div className="min-h-screen">
+      <Navbar />
+      <main className="pt-16">
+        <Hero />
+        <Features />
+      </main>
+    </div>
+  );
+}`;
 
 // =============================================================================
 // SAVE FILES TO DATABASE
@@ -616,13 +615,11 @@ async function saveFilesToWorkspace(
   userId: string,
   sessionId: string | null,
   files: FileOperation[],
-  modelUsed: string
+  modelsUsed: string[]
 ) {
-  const results: Array<{ path: string; success: boolean; error?: string }> = [];
-
   for (const file of files) {
     try {
-      const { error: upsertError } = await supabase
+      await supabase
         .from("workspace_files")
         .upsert({
           workspace_id: workspaceId,
@@ -632,11 +629,7 @@ async function saveFilesToWorkspace(
           file_type: file.path.split(".").pop() || "txt",
           is_generated: true,
           updated_at: new Date().toISOString(),
-        }, {
-          onConflict: "workspace_id,file_path",
-        });
-
-      if (upsertError) throw upsertError;
+        }, { onConflict: "workspace_id,file_path" });
 
       await supabase
         .from("file_operations")
@@ -647,244 +640,63 @@ async function saveFilesToWorkspace(
           operation: file.operation,
           file_path: file.path,
           new_content: file.content,
-          ai_model: modelUsed,
+          ai_model: modelsUsed.join(", "),
           validated: true,
           applied: true,
           applied_at: new Date().toISOString(),
         });
-
-      results.push({ path: file.path, success: true });
     } catch (err) {
-      console.error(`Failed to save file ${file.path}:`, err);
-      results.push({ path: file.path, success: false, error: String(err) });
+      console.error(`Failed to save ${file.path}:`, err);
     }
   }
-
-  return results;
 }
 
 // =============================================================================
-// STREAMING GENERATION - Multi-Model with Fallback
+// TRY RAILWAY BACKEND FIRST
 // =============================================================================
 
-async function streamGeneration(
-  supabase: DB,
+async function tryRailwayBackend(
   workspaceId: string,
-  userId: string,
   prompt: string,
-  existingFiles: Array<{ path: string; content: string }>,
-  history: Array<{ role: string; content: string }>
-): Promise<Response> {
-  
-  // Create generation session
-  const { data: session } = await supabase
-    .from("generation_sessions")
-    .insert({
-      workspace_id: workspaceId,
-      user_id: userId,
-      prompt,
-      status: "generating",
-      started_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  const sessionId = session?.id || null;
-
-  // Update workspace status
-  await supabase
-    .from("workspaces")
-    .update({ status: "generating", last_activity_at: new Date().toISOString() })
-    .eq("id", workspaceId);
-
-  const isNewProject = existingFiles.length === 0;
-
-  // Build system prompt with context
-  let systemPrompt: string;
-  if (isNewProject) {
-    systemPrompt = NEW_PROJECT_PROMPT;
-  } else {
-    let fileContext = "\n\n## EXISTING PROJECT FILES:\n";
-    for (const file of existingFiles.slice(0, 10)) {
-      fileContext += `\n### ${file.path}\n\`\`\`\n${file.content.slice(0, 3000)}\n\`\`\`\n`;
-    }
-    systemPrompt = MODIFY_PROJECT_PROMPT + fileContext;
-  }
-
-  // Build messages
-  const messages = [
-    { role: "system", content: systemPrompt },
-    ...history.slice(-6),
-    { role: "user", content: prompt }
-  ];
-
-  // Try providers in order: Grok > Gemini > OpenAI
-  const providers: Array<{ key: keyof typeof AI_PROVIDERS; envVar: string }> = [
-    { key: "grok", envVar: "GROK_API_KEY" },
-    { key: "gemini", envVar: "GEMINI_API_KEY" },
-    { key: "openai", envVar: "OPENAI_API_KEY" },
-  ];
-
-  let aiResponse: Response | null = null;
-  let modelUsed = "";
-  let providerUsed = "";
-
-  for (const { key, envVar } of providers) {
-    const apiKey = Deno.env.get(envVar);
-    if (!apiKey) continue;
-
-    try {
-      console.log(`[Buildable AI] Attempting ${AI_PROVIDERS[key].name}...`);
-      aiResponse = await callAIProvider(key, apiKey, messages, true);
-      
-      if (aiResponse.ok) {
-        modelUsed = AI_PROVIDERS[key].model;
-        providerUsed = AI_PROVIDERS[key].name;
-        console.log(`[Buildable AI] ✓ Using ${providerUsed} (${modelUsed})`);
-        break;
-      } else {
-        const errorText = await aiResponse.text();
-        console.log(`[Buildable AI] ${AI_PROVIDERS[key].name} failed (${aiResponse.status}): ${errorText.slice(0, 200)}`);
-        aiResponse = null;
-      }
-    } catch (e) {
-      console.log(`[Buildable AI] ${AI_PROVIDERS[key].name} error:`, e);
-    }
-  }
-
-  if (!aiResponse) {
-    if (sessionId) {
-      await supabase
-        .from("generation_sessions")
-        .update({ 
-          status: "failed",
-          error_message: "All AI providers failed",
-          completed_at: new Date().toISOString()
-        })
-        .eq("id", sessionId);
-    }
+  accessToken: string
+): Promise<Response | null> {
+  try {
+    console.log("[Buildable AI] Trying Railway backend...");
     
-    await supabase
-      .from("workspaces")
-      .update({ status: "error" })
-      .eq("id", workspaceId);
+    const response = await fetch(`${RAILWAY_BACKEND_URL}/api/generate/${workspaceId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ prompt }),
+    });
 
-    throw new Error("All AI providers failed. Check your API keys: GROK_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY");
-  }
-
-  // Transform stream
-  let fullContent = "";
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-
-  const transformStream = new TransformStream({
-    start(controller) {
-      const metadata = {
-        type: "metadata",
-        sessionId,
-        workspaceId,
-        status: "generating",
-        model: modelUsed,
-        provider: providerUsed,
-      };
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`));
-    },
-
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-
-      const text = decoder.decode(chunk, { stream: true });
-      const lines = text.split("\n");
-      
-      for (const line of lines) {
-        if (line.startsWith("data: ") && line !== "data: [DONE]") {
-          try {
-            const json = JSON.parse(line.slice(6));
-            const content = json.choices?.[0]?.delta?.content;
-            if (content) {
-              fullContent += content;
-            }
-          } catch {
-            // Ignore parse errors
-          }
-        }
-      }
-    },
-
-    async flush(controller) {
-      try {
-        let files = extractFiles(fullContent);
-        
-        // If no files extracted and this is a new project, use templates
-        if (files.length === 0 && existingFiles.length === 0) {
-          console.log("[Buildable AI] No files extracted, using default templates");
-          files = getDefaultFiles();
-        }
-
-        if (files.length > 0) {
-          await saveFilesToWorkspace(supabase, workspaceId, userId, sessionId, files, modelUsed);
-        }
-
-        if (sessionId) {
-          await supabase
-            .from("generation_sessions")
-            .update({ 
-              status: "completed",
-              files_generated: files.length,
-              model_used: modelUsed,
-              validation_passed: true,
-              completed_at: new Date().toISOString()
-            })
-            .eq("id", sessionId);
-        }
-
-        await supabase
-          .from("workspaces")
-          .update({ status: "ready", last_activity_at: new Date().toISOString() })
-          .eq("id", workspaceId);
-
-        const completion = {
-          type: "completion",
-          sessionId,
-          filesGenerated: files.length,
-          filePaths: files.map(f => f.path),
-          model: modelUsed,
-          provider: providerUsed,
-        };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(completion)}\n\n`));
-
-      } catch (err) {
-        console.error("[Buildable AI] Error in flush:", err);
-        
-        if (sessionId) {
-          await supabase
-            .from("generation_sessions")
-            .update({ 
-              status: "failed",
-              error_message: String(err),
-              completed_at: new Date().toISOString()
-            })
-            .eq("id", sessionId);
-        }
-      }
+    if (response.ok) {
+      console.log("[Buildable AI] ✓ Railway backend responded");
+      return response;
     }
-  });
 
-  aiResponse.body!.pipeTo(transformStream.writable).catch(console.error);
-
-  return new Response(transformStream.readable, {
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-    },
-  });
+    console.log(`[Buildable AI] Railway backend failed: ${response.status}`);
+    return null;
+  } catch (e) {
+    console.log("[Buildable AI] Railway backend unreachable:", e);
+    return null;
+  }
 }
 
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
+
+interface GenerateRequest {
+  projectId: string;
+  workspaceId: string;
+  prompt: string;
+  conversationHistory?: Array<{ role: string; content: string }>;
+  existingFiles?: Array<{ path: string; content: string }>;
+  useRailwayBackend?: boolean;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -893,10 +705,15 @@ serve(async (req) => {
 
   try {
     // Verify at least one AI provider is configured
-    const availableProvider = getAvailableProvider();
-    if (!availableProvider) {
-      throw new Error("No AI provider configured. Set at least one of: GROK_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY");
+    const hasGrok = !!Deno.env.get("GROK_API_KEY");
+    const hasGemini = !!Deno.env.get("GEMINI_API_KEY");
+    const hasOpenAI = !!Deno.env.get("OPENAI_API_KEY");
+    
+    if (!hasGrok && !hasGemini && !hasOpenAI) {
+      throw new Error("No AI providers configured. Set GROK_API_KEY, GEMINI_API_KEY, or OPENAI_API_KEY");
     }
+
+    console.log(`[Buildable AI] Providers: Grok=${hasGrok}, Gemini=${hasGemini}, OpenAI=${hasOpenAI}`);
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -906,11 +723,11 @@ serve(async (req) => {
       );
     }
 
+    const token = authHeader.replace("Bearer ", "");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase: DB = createClient(supabaseUrl, supabaseKey);
 
-    const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       return new Response(
@@ -920,7 +737,7 @@ serve(async (req) => {
     }
 
     const body: GenerateRequest = await req.json();
-    const { projectId, workspaceId, prompt, conversationHistory = [], existingFiles = [] } = body;
+    const { projectId, workspaceId, prompt, conversationHistory = [], existingFiles = [], useRailwayBackend = true } = body;
 
     if (!projectId || !prompt) {
       return new Response(
@@ -944,11 +761,7 @@ serve(async (req) => {
       } else {
         const { data: newWs } = await supabase
           .from("workspaces")
-          .insert({
-            project_id: projectId,
-            user_id: user.id,
-            status: "ready",
-          })
+          .insert({ project_id: projectId, user_id: user.id, status: "ready" })
           .select()
           .single();
         wsId = newWs?.id;
@@ -972,7 +785,7 @@ serve(async (req) => {
 
     if (wsError || !workspace) {
       return new Response(
-        JSON.stringify({ error: "Workspace not found or access denied" }),
+        JSON.stringify({ error: "Workspace not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -986,18 +799,92 @@ serve(async (req) => {
       );
     }
 
-    // Stream the generation using YOUR API keys
-    return await streamGeneration(
+    // Try Railway backend first if enabled
+    if (useRailwayBackend) {
+      const railwayResponse = await tryRailwayBackend(wsId, prompt, token);
+      if (railwayResponse) {
+        // Proxy the Railway response directly
+        return new Response(railwayResponse.body, {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Fallback: Run multi-model pipeline locally
+    console.log("[Buildable AI] Running local multi-model pipeline");
+
+    // Create session
+    const { data: session } = await supabase
+      .from("generation_sessions")
+      .insert({
+        workspace_id: wsId,
+        user_id: user.id,
+        prompt,
+        status: "pending",
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    const sessionId = session?.id || null;
+
+    // Update workspace status
+    await supabase
+      .from("workspaces")
+      .update({ status: "generating" })
+      .eq("id", wsId);
+
+    // Run the pipeline
+    const pipelineResult = await runPipeline({
       supabase,
-      wsId,
-      user.id,
+      workspaceId: wsId,
+      userId: user.id,
       prompt,
       existingFiles,
-      conversationHistory
+      history: conversationHistory,
+      sessionId,
+    });
+
+    // Save files
+    if (pipelineResult.success && pipelineResult.files.length > 0) {
+      await saveFilesToWorkspace(supabase, wsId, user.id, sessionId, pipelineResult.files, pipelineResult.modelsUsed);
+    }
+
+    // Update session
+    if (sessionId) {
+      await supabase
+        .from("generation_sessions")
+        .update({
+          status: pipelineResult.success ? "completed" : "failed",
+          files_generated: pipelineResult.files.length,
+          model_used: pipelineResult.modelsUsed.join(", "),
+          completed_at: new Date().toISOString(),
+          error_message: pipelineResult.errors?.join("; ") || null,
+        })
+        .eq("id", sessionId);
+    }
+
+    // Update workspace
+    await supabase
+      .from("workspaces")
+      .update({ status: pipelineResult.success ? "ready" : "error" })
+      .eq("id", wsId);
+
+    return new Response(
+      JSON.stringify({
+        success: pipelineResult.success,
+        sessionId,
+        filesGenerated: pipelineResult.files.length,
+        filePaths: pipelineResult.files.map(f => f.path),
+        modelsUsed: pipelineResult.modelsUsed,
+        plan: pipelineResult.plan,
+        errors: pipelineResult.errors,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("[Buildable AI] Generation error:", error);
+    console.error("[Buildable AI] Error:", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
