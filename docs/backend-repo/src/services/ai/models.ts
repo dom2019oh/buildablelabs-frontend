@@ -31,11 +31,12 @@ export enum TaskType {
 }
 
 // Grok models (xAI) - Primary for coding with massive context
+// NOTE: Using stable model names that are known to work
 export const GrokModels = {
-  GROK_3_FAST: 'grok-3-fast',           // Fast general purpose - 131K context
-  GROK_3: 'grok-3',                      // Full power Grok 3
-  GROK_3_MINI: 'grok-3-mini',            // Lightweight, fast validation
-  GROK_VISION: 'grok-vision-beta',       // Multimodal capability
+  GROK_2_LATEST: 'grok-2-latest',        // Stable fast model - 128K context
+  GROK_2: 'grok-2',                       // Full power Grok 2
+  GROK_2_MINI: 'grok-2-mini',             // Lightweight, fast validation
+  GROK_VISION: 'grok-2-vision-1212',      // Multimodal capability
 } as const;
 
 // OpenAI models - Advanced reasoning & fallbacks
@@ -47,54 +48,55 @@ export const OpenAIModels = {
 } as const;
 
 // Gemini models - Planning & multimodal
+// NOTE: Using stable 1.5 models that work with OpenAI-compatible endpoint
 export const GeminiModels = {
-  GEMINI_2_5_FLASH: 'gemini-2.5-flash',           // Fast, balanced
-  GEMINI_2_5_PRO: 'gemini-2.5-pro',               // High capability, 1M context
-  GEMINI_3_FLASH_PREVIEW: 'gemini-3-flash-preview', // Next-gen fast
-  GEMINI_3_PRO_PREVIEW: 'gemini-3-pro-preview',     // Next-gen pro
+  GEMINI_1_5_FLASH: 'gemini-1.5-flash',           // Fast, balanced
+  GEMINI_1_5_PRO: 'gemini-1.5-pro',               // High capability, 1M context
+  GEMINI_2_0_FLASH: 'gemini-2.0-flash-exp',       // Experimental 2.0
 } as const;
 
 // Model routing configuration - BEAST MODE optimized
+// NOTE: Updated to use stable model names
 export const ModelRouting: Record<TaskType, { provider: AIProvider; model: string; fallback?: { provider: AIProvider; model: string } }> = {
   [TaskType.PLANNING]: {
     provider: AIProvider.GEMINI,
-    model: GeminiModels.GEMINI_2_5_PRO,
+    model: GeminiModels.GEMINI_1_5_PRO,
     fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.CODING]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_3_FAST,
+    model: GrokModels.GROK_2_LATEST,
     fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.DEBUGGING]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_3_FAST,
+    model: GrokModels.GROK_2_LATEST,
     fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.REASONING]: {
     provider: AIProvider.OPENAI,
     model: OpenAIModels.GPT_4O,
-    fallback: { provider: AIProvider.GEMINI, model: GeminiModels.GEMINI_2_5_PRO },
+    fallback: { provider: AIProvider.GEMINI, model: GeminiModels.GEMINI_1_5_PRO },
   },
   [TaskType.MULTIMODAL]: {
     provider: AIProvider.GEMINI,
-    model: GeminiModels.GEMINI_3_PRO_PREVIEW,
+    model: GeminiModels.GEMINI_1_5_PRO,
     fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O },
   },
   [TaskType.VALIDATION]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_3_MINI,
+    model: GrokModels.GROK_2_MINI,
     fallback: { provider: AIProvider.OPENAI, model: OpenAIModels.GPT_4O_MINI },
   },
   [TaskType.REFINEMENT]: {
     provider: AIProvider.OPENAI,
     model: OpenAIModels.GPT_4O,
-    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_3_FAST },
+    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_2_LATEST },
   },
   [TaskType.REPAIR]: {
     provider: AIProvider.OPENAI,
     model: OpenAIModels.GPT_4O,
-    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_3_FAST },
+    fallback: { provider: AIProvider.GROK, model: GrokModels.GROK_2_LATEST },
   },
 };
 
@@ -198,28 +200,28 @@ export interface ModelInfo {
 }
 
 export const ModelRegistry: Record<string, ModelInfo> = {
-  [GrokModels.GROK_3_FAST]: {
+  [GrokModels.GROK_2_LATEST]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_3_FAST,
-    contextWindow: 131_072,
+    model: GrokModels.GROK_2_LATEST,
+    contextWindow: 128_000,
     maxOutput: 16_384,
     supportsStreaming: true,
     supportsImages: false,
     strengths: ['fast-coding', 'debugging', 'real-time'],
   },
-  [GrokModels.GROK_3]: {
+  [GrokModels.GROK_2]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_3,
-    contextWindow: 131_072,
+    model: GrokModels.GROK_2,
+    contextWindow: 128_000,
     maxOutput: 16_384,
     supportsStreaming: true,
     supportsImages: false,
     strengths: ['coding', 'analysis', 'reasoning'],
   },
-  [GrokModels.GROK_3_MINI]: {
+  [GrokModels.GROK_2_MINI]: {
     provider: AIProvider.GROK,
-    model: GrokModels.GROK_3_MINI,
-    contextWindow: 131_072,
+    model: GrokModels.GROK_2_MINI,
+    contextWindow: 128_000,
     maxOutput: 8_192,
     supportsStreaming: true,
     supportsImages: false,
@@ -270,40 +272,31 @@ export const ModelRegistry: Record<string, ModelInfo> = {
     supportsImages: false,
     strengths: ['fast-reasoning', 'math', 'code'],
   },
-  [GeminiModels.GEMINI_2_5_FLASH]: {
+  [GeminiModels.GEMINI_1_5_FLASH]: {
     provider: AIProvider.GEMINI,
-    model: GeminiModels.GEMINI_2_5_FLASH,
+    model: GeminiModels.GEMINI_1_5_FLASH,
     contextWindow: 1_000_000,
     maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
     strengths: ['fast-planning', 'cost-effective'],
   },
-  [GeminiModels.GEMINI_2_5_PRO]: {
+  [GeminiModels.GEMINI_1_5_PRO]: {
     provider: AIProvider.GEMINI,
-    model: GeminiModels.GEMINI_2_5_PRO,
+    model: GeminiModels.GEMINI_1_5_PRO,
     contextWindow: 2_000_000,
     maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
     strengths: ['planning', 'large-context', 'multimodal'],
   },
-  [GeminiModels.GEMINI_3_FLASH_PREVIEW]: {
+  [GeminiModels.GEMINI_2_0_FLASH]: {
     provider: AIProvider.GEMINI,
-    model: GeminiModels.GEMINI_3_FLASH_PREVIEW,
+    model: GeminiModels.GEMINI_2_0_FLASH,
     contextWindow: 1_000_000,
     maxOutput: 65_536,
     supportsStreaming: true,
     supportsImages: true,
     strengths: ['next-gen-fast', 'balanced'],
-  },
-  [GeminiModels.GEMINI_3_PRO_PREVIEW]: {
-    provider: AIProvider.GEMINI,
-    model: GeminiModels.GEMINI_3_PRO_PREVIEW,
-    contextWindow: 2_000_000,
-    maxOutput: 65_536,
-    supportsStreaming: true,
-    supportsImages: true,
-    strengths: ['next-gen-pro', 'vision', 'reasoning'],
   },
 };

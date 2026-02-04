@@ -441,6 +441,50 @@ export function compileWorkspaceEntryToHtml(
   }
 }
 
+// NEW: Compile a specific route to HTML
+// Maps route (e.g., "/about") to the correct page file and compiles it
+export function compileRouteToHtml(
+  route: string,
+  files: Array<{ file_path: string; content: string }>,
+): string {
+  // Normalize route
+  const normalizedRoute = route === '/' ? 'index' : route.replace(/^\//, '').toLowerCase();
+  
+  // Find the matching page file
+  const pageFile = files.find(f => {
+    const path = f.file_path.toLowerCase();
+    if (!path.includes('/pages/') && !path.includes('/routes/')) return false;
+    
+    // Extract page name from path
+    const match = path.match(/(?:pages|routes)\/([^.]+)/);
+    if (!match) return false;
+    
+    const pageName = match[1].toLowerCase();
+    return pageName === normalizedRoute || 
+           pageName === normalizedRoute.replace(/-/g, '') ||
+           (normalizedRoute === 'index' && (pageName === 'index' || pageName === 'home'));
+  });
+  
+  if (!pageFile) {
+    // Fallback to Index.tsx
+    const indexFile = files.find(f => 
+      f.file_path.toLowerCase().includes('/pages/index.tsx') ||
+      f.file_path.toLowerCase().includes('/pages/home.tsx')
+    );
+    
+    if (indexFile) {
+      return compileWorkspaceEntryToHtml(indexFile.file_path, files);
+    }
+    
+    return generatePreviewFallback(
+      `Route "${route}" not found`,
+      'This page hasn\'t been generated yet. Ask the AI to create it!'
+    );
+  }
+  
+  return compileWorkspaceEntryToHtml(pageFile.file_path, files);
+}
+
 function inferDefaultExportName(code: string): string | null {
   // export default function Name() {}
   const fn = code.match(/export\s+default\s+function\s+([A-Za-z0-9_]+)/);
