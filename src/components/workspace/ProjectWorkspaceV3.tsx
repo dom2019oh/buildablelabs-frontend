@@ -14,6 +14,7 @@ import {
   generatePreviewHtml,
   compileComponentToHtml,
   compileWorkspaceEntryToHtml,
+  compileRouteToHtml,
   stripCodeBlocksFromResponse,
 } from '@/stores/projectFilesStore';
 import WorkspaceTopBarV2 from './WorkspaceTopBarV2';
@@ -232,6 +233,20 @@ export default function ProjectWorkspaceV3() {
       }
     }
   }, [generatedFiles, addFile, setPreviewHtml, pickPreviewEntryFile]);
+
+  // NEW: Recompile preview when route changes
+  useEffect(() => {
+    if (!workspaceFiles || workspaceFiles.length === 0) return;
+    
+    // Compile the selected route to HTML
+    const html = compileRouteToHtml(
+      currentRoute,
+      workspaceFiles.map(f => ({ file_path: f.file_path, content: f.content }))
+    );
+    const fullHtml = generatePreviewHtml(html);
+    setPreviewHtml(fullHtml);
+    setPreviewKey((prev) => prev + 1);
+  }, [currentRoute, workspaceFiles, setPreviewHtml]);
 
   const handleRefreshPreview = useCallback(() => {
     setPreviewKey((prev) => prev + 1);

@@ -30,19 +30,22 @@ const AI_PROVIDERS = {
     name: "Grok (xAI)",
     baseUrl: "https://api.x.ai/v1/chat/completions",
     models: {
-      fast: "grok-3-fast",
-      code: "grok-3-fast",
+      // Updated to use grok-2-latest which is the stable fast model
+      fast: "grok-2-latest",
+      code: "grok-2-latest",
       vision: "grok-2-vision-1212",
     },
     maxTokens: 16000,
   },
   gemini: {
     name: "Gemini (Google)",
+    // Use the correct Gemini API endpoint - the OpenAI-compatible one
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
     models: {
-      pro: "gemini-2.5-pro",
-      flash: "gemini-2.5-flash",
-      planning: "gemini-2.5-pro",
+      // Use stable model names that work with the OpenAI-compatible API
+      pro: "gemini-1.5-pro",
+      flash: "gemini-1.5-flash",
+      planning: "gemini-1.5-pro",
     },
     maxTokens: 16000,
   },
