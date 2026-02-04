@@ -136,123 +136,139 @@ Want me to connect it to email, or add more fields like phone number?"
 6. Use relevant emojis sparingly (1-2 per response)
 7. NEVER show code blocks in your response — code goes directly to the file system`;
 
-const BEAST_ARCHITECT_PROMPT = `You are Buildable's Architect AI — a world-class software architect.
+const BEAST_ARCHITECT_PROMPT = `You are Buildable's Architect AI — a world-class software architect who creates STUNNING, VISUALLY RICH websites.
 
 ## YOUR MISSION:
-Analyze the user's request and create a PRECISE implementation plan.
+Analyze the user's request and create a PRECISE implementation plan with VISUAL EXCELLENCE.
 
 ## CRITICAL ANALYSIS:
 1. Identify the EXACT type of website/app needed
 2. List ALL required pages and components
 3. Determine the BEST file structure
 4. Specify exact features for each component
+5. **SELECT RELEVANT UNSPLASH IMAGES** for the niche
+
+## IMAGE STRATEGY:
+- For EVERY project, select 3-8 HIGH-QUALITY Unsplash images
+- Use SPECIFIC photo IDs for consistent, beautiful results
+- Match images to the industry/niche (bakery=bread/pastries, fitness=gym/workout, etc.)
+
+## CURATED IMAGE LIBRARY BY NICHE:
+- Bakery/Cafe: photo-1509440159596-0249088772ff, photo-1555507036-ab1f4038808a, photo-1517433670267-30f41c41e0fe, photo-1486427944299-d1955d23e34d
+- Restaurant/Food: photo-1517248135467-4c7edcad34c4, photo-1414235077428-338989a2e8c0, photo-1424847651672-bf20a4b0982b
+- Fitness/Gym: photo-1534438327276-14e5300c3a48, photo-1571019613454-1cb2f99b2d8b, photo-1517836357463-d25dfeac3438
+- SaaS/Tech: photo-1551288049-bebda4e38f71, photo-1460925895917-afdab827c52f, photo-1504868584819-f8e8b4b6d7e3
+- Portfolio/Creative: photo-1558655146-d09347e92766, photo-1561070791-2526d30994b5, photo-1545235617-7a424c1a60cc
+- E-commerce/Shop: photo-1472851294608-062f824d29cc, photo-1441986300917-64674bd600d8, photo-1555529669-e69e7aa0ba9a
+- Real Estate: photo-1600596542815-ffad4c1539a9, photo-1600585154340-be6161a56a0c, photo-1600607687939-ce8a6c25118c
+- Healthcare/Medical: photo-1576091160550-2173dba999ef, photo-1631217868264-e5b90bb7e133
+- Travel/Tourism: photo-1507525428034-b723cf961d3e, photo-1476514525535-07fb3b4ae5f1, photo-1530789253388-582c481c54b0
 
 ## OUTPUT FORMAT (JSON):
 {
   "projectType": "landing-page | e-commerce | dashboard | portfolio | blog | saas",
   "theme": { "primary": "purple", "style": "modern-gradient | minimal | bold | glass" },
   "pages": [
-    { "path": "src/pages/Index.tsx", "purpose": "Main landing page", "sections": ["hero", "features", "pricing", "cta", "footer"] }
+    { "path": "src/pages/Index.tsx", "purpose": "Main landing page", "sections": ["hero", "features", "gallery", "testimonials", "cta", "footer"] }
   ],
   "components": [
     { "path": "src/components/layout/Navbar.tsx", "features": ["logo", "nav-links", "mobile-menu", "cta-button"] },
-    { "path": "src/components/Hero.tsx", "features": ["badge", "headline", "subheadline", "cta-buttons", "gradient-bg"] }
+    { "path": "src/components/Hero.tsx", "features": ["hero-image", "gradient-overlay", "headline", "subheadline", "cta-buttons"] }
   ],
   "routes": ["/", "/about", "/contact", "/menu"],
-  "nicheImages": ["bakery products", "fresh bread", "pastries"],
-  "specialInstructions": "any specific requirements"
+  "images": [
+    { "usage": "hero-bg", "url": "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1920&q=80" },
+    { "usage": "gallery-1", "url": "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=800&q=80" },
+    { "usage": "gallery-2", "url": "https://images.unsplash.com/photo-1517433670267-30f41c41e0fe?w=800&q=80" },
+    { "usage": "gallery-3", "url": "https://images.unsplash.com/photo-1486427944299-d1955d23e34d?w=800&q=80" }
+  ],
+  "nicheKeywords": ["bakery", "pastries", "artisan bread"],
+  "specialInstructions": "Use warm browns and cream colors to match bakery aesthetic"
 }
 
-Be EXHAUSTIVE. List EVERY component needed.`;
+Be EXHAUSTIVE. Include SPECIFIC image URLs for the niche.`;
 
-const BEAST_CODER_PROMPT = `You are Buildable's Coder AI — an ELITE React developer. Your code is FLAWLESS.
+const BEAST_CODER_PROMPT = `You are Buildable's Coder AI — an ELITE React developer creating VISUALLY STUNNING websites.
 
-## 🔥 BEAST MODE RULES — ZERO TOLERANCE FOR ERRORS:
+## 🔥 BEAST MODE RULES — NEXT-GEN VISUALS + ZERO ERRORS:
 
-### 1. COMPLETE CODE ONLY
+### 1. VISUAL EXCELLENCE (CRITICAL)
+- EVERY hero section MUST have a stunning background image from Unsplash
+- EVERY gallery/showcase MUST display real Unsplash images
+- Use this exact pattern for hero images:
+<section className="relative min-h-screen flex items-center">
+  <img src="https://images.unsplash.com/photo-XXX?w=1920&q=80" alt="Hero" className="absolute inset-0 w-full h-full object-cover" />
+  <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/40" />
+  <div className="relative z-10">...</div>
+</section>
+
+### 2. UNSPLASH IMAGE PATTERNS BY NICHE:
+- Bakery: photo-1509440159596-0249088772ff, photo-1555507036-ab1f4038808a, photo-1517433670267-30f41c41e0fe
+- Restaurant: photo-1517248135467-4c7edcad34c4, photo-1414235077428-338989a2e8c0
+- Fitness: photo-1534438327276-14e5300c3a48, photo-1571019613454-1cb2f99b2d8b
+- Tech/SaaS: photo-1551288049-bebda4e38f71, photo-1460925895917-afdab827c52f
+- E-commerce: photo-1472851294608-062f824d29cc, photo-1441986300917-64674bd600d8
+
+### 3. COMPLETE CODE ONLY
 - NEVER use "...", "// more code", or ANY placeholder
 - EVERY function must have FULL implementation
 - EVERY component must be 100% complete
-- If a component needs state, IMPLEMENT IT FULLY
 
-### 2. JSX PERFECTION
+### 4. JSX PERFECTION
 - EVERY opening tag MUST have a closing tag
-- NEVER leave orphaned expressions like \`{condition && (\` without closing
-- ALL ternaries must be complete: \`condition ? <A/> : <B/>\` or \`condition ? <A/> : null\`
-- Wrap multi-line JSX in parentheses: \`{condition && (<div>...</div>)}\`
+- NEVER leave orphaned expressions like {condition && ( without closing
+- ALL ternaries must be complete: condition ? <A/> : <B/> or condition ? <A/> : null
+- Wrap multi-line JSX in parentheses
 
-### 3. IMPORTS — NO MISSING IMPORTS
-\`\`\`tsx
-// ALWAYS include these as needed:
+### 5. IMPORTS — NO MISSING IMPORTS
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom'; // if using routing
-import { IconName } from 'lucide-react'; // for icons
-\`\`\`
+import { Link } from 'react-router-dom';
+import { Menu, X, ArrowRight } from 'lucide-react';
 
-### 4. TAILWIND PATTERNS — USE THESE EXACTLY:
-\`\`\`tsx
+### 6. TAILWIND VISUAL PATTERNS:
+// Hero with image background
+<section className="relative min-h-screen flex items-center">
+  <img src="https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1920&q=80" className="absolute inset-0 w-full h-full object-cover" />
+  <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
+  <div className="relative z-10 container mx-auto px-4">...</div>
+</section>
+
+// Gallery grid
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {images.map((img, i) => (
+    <div key={i} className="group overflow-hidden rounded-2xl aspect-square">
+      <img src={img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+    </div>
+  ))}
+</div>
+
 // Navbar
 <nav className="fixed top-0 left-0 right-0 z-50 bg-zinc-900/80 backdrop-blur-lg border-b border-zinc-800">
 
-// Hero gradient
-<section className="min-h-screen bg-gradient-to-br from-purple-900/40 via-zinc-900 to-pink-900/30">
+// Gradient text
+<h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
 
-// Cards
-<div className="p-6 rounded-2xl bg-zinc-800/50 border border-zinc-700 hover:border-purple-500/50 transition-all">
-
-// Buttons
-<button className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-medium transition-colors">
-<button className="px-6 py-3 rounded-xl border border-zinc-700 hover:bg-zinc-800 text-white font-medium transition-colors">
-
-// Text
-<h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-<p className="text-zinc-400 text-lg">
-\`\`\`
-
-### 5. MOBILE MENU PATTERN — USE THIS EXACT PATTERN:
-\`\`\`tsx
+### 7. MOBILE MENU PATTERN:
 const [menuOpen, setMenuOpen] = useState(false);
+// Desktop: <div className="hidden md:flex">
+// Mobile button: <button className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
+// Mobile menu: {menuOpen && (<div className="md:hidden absolute top-full left-0 right-0 bg-zinc-900">...</div>)}
 
-return (
-  <nav>
-    {/* Desktop nav */}
-    <div className="hidden md:flex">...</div>
-    
-    {/* Mobile button */}
-    <button className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
-      {menuOpen ? <X /> : <Menu />}
-    </button>
-    
-    {/* Mobile menu - MUST be complete */}
-    {menuOpen && (
-      <div className="md:hidden absolute top-full left-0 right-0 bg-zinc-900 border-b border-zinc-800">
-        <div className="p-4 flex flex-col gap-4">
-          {links.map(link => (
-            <a key={link} href={\`#\${link.toLowerCase()}\`} className="text-zinc-300 hover:text-white">
-              {link}
-            </a>
-          ))}
-        </div>
-      </div>
-    )}
-  </nav>
-);
-\`\`\`
-
-### 6. FILE OUTPUT FORMAT:
+### 8. FILE OUTPUT FORMAT:
+Use this format for each file:
 \`\`\`tsx:src/path/to/File.tsx
-// Complete implementation here
+// Complete implementation
 \`\`\`
 
-### 7. REQUIRED FILES FOR ANY PROJECT:
-1. \`src/index.css\` - Full Tailwind setup with CSS variables
-2. \`src/pages/Index.tsx\` - Main page importing all components
-3. \`src/components/layout/Navbar.tsx\` - COMPLETE with mobile menu
-4. \`src/components/Hero.tsx\` - Full hero section
-5. \`src/components/Features.tsx\` - Features grid
-6. \`src/components/layout/Footer.tsx\` - Complete footer
+### 9. REQUIRED FILES FOR ANY PROJECT:
+1. src/index.css - Tailwind setup with CSS variables
+2. src/pages/Index.tsx - Main page importing all components
+3. src/components/layout/Navbar.tsx - COMPLETE with mobile menu
+4. src/components/Hero.tsx - Full hero with BACKGROUND IMAGE
+5. src/components/Gallery.tsx or Features.tsx - With REAL IMAGES
+6. src/components/layout/Footer.tsx - Complete footer
 
-Generate 6-10 COMPLETE files. NO shortcuts. NO placeholders. PRODUCTION READY.`;
+Generate 6-10 COMPLETE files with REAL IMAGES. NO shortcuts. NO placeholders. PRODUCTION READY.`;
 
 const BEAST_VALIDATOR_PROMPT = `You are Buildable's Validator AI — a ruthless code quality enforcer.
 
@@ -801,13 +817,26 @@ function getEnhancedDefaults(prompt: string): FileOperation[] {
   const nameMatch = prompt.match(/(?:build|create|make)\s+(?:a\s+)?(?:nice\s+)?(.+?)(?:\s+(?:landing|page|website|site|shop|store))?$/i);
   const projectName = nameMatch ? nameMatch[1].trim() : "My Project";
   const brandName = projectName.split(" ").slice(0, 2).join("");
+  
+  // Detect niche for image selection
+  const p = prompt.toLowerCase();
+  let nicheType = "default";
+  if (p.includes("bakery") || p.includes("bread") || p.includes("pastry")) nicheType = "bakery";
+  else if (p.includes("cafe") || p.includes("coffee")) nicheType = "cafe";
+  else if (p.includes("restaurant") || p.includes("food")) nicheType = "restaurant";
+  else if (p.includes("fitness") || p.includes("gym") || p.includes("workout")) nicheType = "fitness";
+  else if (p.includes("tech") || p.includes("saas") || p.includes("software")) nicheType = "tech";
+  else if (p.includes("shop") || p.includes("store") || p.includes("ecommerce")) nicheType = "ecommerce";
+  else if (p.includes("portfolio") || p.includes("creative")) nicheType = "portfolio";
+  else if (p.includes("real estate") || p.includes("property")) nicheType = "realestate";
+  else if (p.includes("travel") || p.includes("tourism")) nicheType = "travel";
 
   return [
     { path: "src/index.css", content: ENHANCED_CSS, operation: "create" },
     { path: "src/components/layout/Navbar.tsx", content: getEnhancedNavbar(brandName), operation: "create" },
-    { path: "src/components/Hero.tsx", content: getEnhancedHero(projectName), operation: "create" },
+    { path: "src/components/Hero.tsx", content: getEnhancedHero(projectName, nicheType), operation: "create" },
+    { path: "src/components/Gallery.tsx", content: getEnhancedGallery(nicheType), operation: "create" },
     { path: "src/components/Features.tsx", content: ENHANCED_FEATURES, operation: "create" },
-    { path: "src/components/Pricing.tsx", content: ENHANCED_PRICING, operation: "create" },
     { path: "src/components/CTA.tsx", content: ENHANCED_CTA, operation: "create" },
     { path: "src/components/layout/Footer.tsx", content: getEnhancedFooter(brandName), operation: "create" },
     { path: "src/pages/Index.tsx", content: getEnhancedIndex(brandName), operation: "create" },
@@ -915,42 +944,74 @@ export default function Navbar() {
 }`;
 }
 
-function getEnhancedHero(title: string): string {
+function getEnhancedHero(title: string, nicheType: string = "default"): string {
+  // Select hero image based on niche
+  const heroImages: Record<string, string> = {
+    bakery: "photo-1509440159596-0249088772ff",
+    cafe: "photo-1495474472287-4d71bcdd2085",
+    restaurant: "photo-1517248135467-4c7edcad34c4",
+    fitness: "photo-1534438327276-14e5300c3a48",
+    gym: "photo-1571019613454-1cb2f99b2d8b",
+    tech: "photo-1551288049-bebda4e38f71",
+    saas: "photo-1460925895917-afdab827c52f",
+    ecommerce: "photo-1472851294608-062f824d29cc",
+    portfolio: "photo-1558655146-d09347e92766",
+    realestate: "photo-1600596542815-ffad4c1539a9",
+    travel: "photo-1507525428034-b723cf961d3e",
+    default: "photo-1557683316-973673baf926",
+  };
+  
+  const imageId = heroImages[nicheType.toLowerCase()] || heroImages.default;
+  const imageUrl = `https://images.unsplash.com/${imageId}?w=1920&q=80`;
+  
   return `import { ArrowRight, Sparkles } from 'lucide-react';
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900/30 via-zinc-900 to-pink-900/20 overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 overflow-hidden">
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      {/* Background Image */}
+      <img 
+        src="${imageUrl}" 
+        alt="Hero background"
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/40" />
+      
+      {/* Ambient glow effects */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/2 -right-1/4 w-[600px] h-[600px] bg-purple-500/20 rounded-full blur-3xl" />
         <div className="absolute -bottom-1/2 -left-1/4 w-[600px] h-[600px] bg-pink-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center">
         {/* Badge */}
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-sm font-medium mb-8">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white text-sm font-medium mb-8">
           <Sparkles className="h-4 w-4" />
-          <span>Welcome to the future</span>
+          <span>Welcome to ${title}</span>
         </div>
 
         {/* Headline */}
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
-          <span className="gradient-text">Welcome to ${title}</span>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 text-white">
+          Experience the Best <br />
+          <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
+            ${title}
+          </span>
         </h1>
 
         {/* Subheadline */}
-        <p className="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-10">
-          Discover the latest in technology and innovation. Build something amazing with us today.
+        <p className="text-lg sm:text-xl text-zinc-300 max-w-2xl mx-auto mb-10">
+          Discover quality, craftsmanship, and passion in everything we do. Join thousands of satisfied customers.
         </p>
 
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <button className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-600/25">
-            Shop Now
+          <button className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-600/25 hover:shadow-purple-600/40">
+            Get Started
             <ArrowRight className="h-5 w-5" />
           </button>
-          <button className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-white border border-zinc-700 rounded-xl hover:bg-zinc-800 transition-colors">
+          <button className="inline-flex items-center gap-2 px-8 py-4 text-lg font-semibold text-white border border-white/30 rounded-xl hover:bg-white/10 backdrop-blur-sm transition-colors">
             Learn More
           </button>
         </div>
@@ -1082,6 +1143,97 @@ export default function CTA() {
   );
 }`;
 
+function getEnhancedGallery(nicheType: string = "default"): string {
+  // Curated gallery images by niche
+  const galleryImages: Record<string, string[]> = {
+    bakery: [
+      "photo-1509440159596-0249088772ff",
+      "photo-1555507036-ab1f4038808a",
+      "photo-1517433670267-30f41c41e0fe",
+      "photo-1486427944299-d1955d23e34d",
+      "photo-1558961363-fa8fdf82db35",
+      "photo-1509365390695-33aee754301f",
+    ],
+    restaurant: [
+      "photo-1517248135467-4c7edcad34c4",
+      "photo-1414235077428-338989a2e8c0",
+      "photo-1424847651672-bf20a4b0982b",
+      "photo-1550966871-3ed3cdb5ed0c",
+      "photo-1544025162-d76694265947",
+      "photo-1559339352-11d035aa65de",
+    ],
+    fitness: [
+      "photo-1534438327276-14e5300c3a48",
+      "photo-1571019613454-1cb2f99b2d8b",
+      "photo-1517836357463-d25dfeac3438",
+      "photo-1583454110551-21f2fa2afe61",
+      "photo-1571902943202-507ec2618e8f",
+      "photo-1549060279-7e168fcee0c2",
+    ],
+    tech: [
+      "photo-1551288049-bebda4e38f71",
+      "photo-1460925895917-afdab827c52f",
+      "photo-1504868584819-f8e8b4b6d7e3",
+      "photo-1518770660439-4636190af475",
+      "photo-1531297484001-80022131f5a1",
+      "photo-1519389950473-47ba0277781c",
+    ],
+    default: [
+      "photo-1557683316-973673baf926",
+      "photo-1618005182384-a83a8bd57fbe",
+      "photo-1579546929518-9e396f3cc809",
+      "photo-1557682250-33bd709cbe85",
+      "photo-1557682224-5b8590cd9ec5",
+      "photo-1557682260-96773eb01377",
+    ],
+  };
+  
+  const images = galleryImages[nicheType] || galleryImages.default;
+  const imageUrls = images.map(id => `https://images.unsplash.com/${id}?w=800&q=80`);
+  
+  return `export default function Gallery() {
+  const images = [
+    { url: "${imageUrls[0]}", alt: "Gallery image 1" },
+    { url: "${imageUrls[1]}", alt: "Gallery image 2" },
+    { url: "${imageUrls[2]}", alt: "Gallery image 3" },
+    { url: "${imageUrls[3]}", alt: "Gallery image 4" },
+    { url: "${imageUrls[4]}", alt: "Gallery image 5" },
+    { url: "${imageUrls[5]}", alt: "Gallery image 6" },
+  ];
+
+  return (
+    <section id="gallery" className="py-24 bg-zinc-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Our Gallery</h2>
+          <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+            Take a look at some of our finest work and creations.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {images.map((image, index) => (
+            <div
+              key={index}
+              className="group relative overflow-hidden rounded-2xl aspect-square bg-zinc-800"
+            >
+              <img
+                src={image.url}
+                alt={image.alt}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <p className="text-white font-medium">View Details</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}`;
+}
+
 function getEnhancedFooter(brand: string): string {
   return `export default function Footer() {
   const links = {
@@ -1133,8 +1285,8 @@ function getEnhancedFooter(brand: string): string {
 function getEnhancedIndex(brand: string): string {
   return `import Navbar from '../components/layout/Navbar';
 import Hero from '../components/Hero';
+import Gallery from '../components/Gallery';
 import Features from '../components/Features';
-import Pricing from '../components/Pricing';
 import CTA from '../components/CTA';
 import Footer from '../components/layout/Footer';
 
@@ -1144,8 +1296,8 @@ export default function Index() {
       <Navbar />
       <main>
         <Hero />
+        <Gallery />
         <Features />
-        <Pricing />
         <CTA />
       </main>
       <Footer />
