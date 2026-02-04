@@ -595,6 +595,14 @@ Context: Part of refinement request "${refinementPrompt}"`,
         await db.upsertFile(workspaceId, userId, newFile.path, cleanContent);
       }
 
+      // Generate persona response for refinement
+      const personaResult = generatePersonaResponse(refinementPrompt, generatedFiles, {
+        projectType: 'refinement',
+        description: refinementPrompt,
+        files: [],
+        dependencies: [],
+      }, false);
+
       return {
         success: true,
         files: generatedFiles,
@@ -602,6 +610,8 @@ Context: Part of refinement request "${refinementPrompt}"`,
         totalCost,
         modelsUsed,
         stages,
+        aiMessage: personaResult.message,
+        routes: personaResult.routes,
       };
 
     } catch (error) {
