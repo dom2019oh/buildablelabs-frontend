@@ -636,16 +636,19 @@ function generatePersonaResponse(
   // Extract routes from plan
   const routes = plan.routes || ["/"];
 
+  // Detect niche for personalized response
+  const nicheType = detectNicheType(prompt);
+
   // Generate contextual suggestions
   const suggestions: string[] = [];
   const hasNavbar = files.some(f => f.path.toLowerCase().includes("navbar"));
   const hasHero = files.some(f => f.path.toLowerCase().includes("hero"));
-  const hasPricing = files.some(f => f.path.toLowerCase().includes("pricing"));
+  const hasGallery = files.some(f => f.path.toLowerCase().includes("gallery"));
   const hasContact = files.some(f => f.path.toLowerCase().includes("contact"));
 
   if (!hasContact) suggestions.push("Add a contact form");
-  if (!hasPricing) suggestions.push("Add a pricing section");
-  if (hasHero) suggestions.push("Change the hero image or colors");
+  if (!hasGallery) suggestions.push("Add a photo gallery section");
+  if (hasHero) suggestions.push("Change the hero background image");
   suggestions.push("Browse the [Components Library](/dashboard/components) for more sections");
   suggestions.push("Try a different style from the [Backgrounds Library](/dashboard/backgrounds)");
 
@@ -656,12 +659,26 @@ function generatePersonaResponse(
 
   let message: string;
   if (isNewProject) {
-    message = `${emoji} Creating your ${projectType}...\n\n{THINKING_INDICATOR}\n\nDone! I created ${files.length} files including ${fileList}. Everything's styled and ready to preview!\n\n💡 **Next steps:**\n${suggestions.slice(0, 3).map(s => `- ${s}`).join("\n")}`;
+    message = `${emoji} Creating your ${projectType}...\n\n{THINKING_INDICATOR}\n\nDone! I created ${files.length} files including ${fileList}. I've added stunning images that match your ${nicheType} theme!\n\n💡 **Next steps:**\n${suggestions.slice(0, 3).map(s => `- ${s}`).join("\n")}`;
   } else {
     message = `Making those changes now...\n\n{THINKING_INDICATOR}\n\nDone! I updated ${files.length} file(s). Take a look at the preview!\n\n💡 **Want more?**\n${suggestions.slice(0, 2).map(s => `- ${s}`).join("\n")}`;
   }
 
   return { message, routes, suggestions: suggestions.slice(0, 3) };
+}
+
+function detectNicheType(prompt: string): string {
+  const p = prompt.toLowerCase();
+  if (p.includes("bakery") || p.includes("bread") || p.includes("pastry")) return "bakery";
+  if (p.includes("cafe") || p.includes("coffee")) return "cafe";
+  if (p.includes("restaurant") || p.includes("food")) return "restaurant";
+  if (p.includes("fitness") || p.includes("gym") || p.includes("workout")) return "fitness";
+  if (p.includes("tech") || p.includes("saas") || p.includes("software")) return "tech";
+  if (p.includes("shop") || p.includes("store") || p.includes("ecommerce")) return "ecommerce";
+  if (p.includes("portfolio") || p.includes("creative")) return "portfolio";
+  if (p.includes("real estate") || p.includes("property")) return "realestate";
+  if (p.includes("travel") || p.includes("tourism")) return "travel";
+  return "general";
 }
 
 function detectProjectType(prompt: string): string {
