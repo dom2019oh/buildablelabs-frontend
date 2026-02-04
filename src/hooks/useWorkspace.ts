@@ -12,6 +12,38 @@ import { useAuth } from "@/hooks/useAuth";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // =============================================================================
+// SESSION RESILIENCE
+// =============================================================================
+// Avoid stampeding refreshes when multiple queries fire at once.
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function getValidAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  const session = data.session;
+
+  if (!session?.access_token) return null;
+
+  // Proactively refresh if the session is expired or about to expire.
+  // (expires_at is seconds since epoch)
+  const expiresAtMs = (session.expires_at ?? 0) * 1000;
+  const isExpiredOrNearExpiry = expiresAtMs > 0 && Date.now() > expiresAtMs - 60_000;
+
+  if (!isExpiredOrNearExpiry) return session.access_token;
+
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const { data: refreshed, error } = await supabase.auth.refreshSession();
+      if (error) return null;
+      return refreshed.session?.access_token ?? null;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+
+  return refreshInFlight;
+}
+
+// =============================================================================
 // TYPES
 // =============================================================================
 
@@ -123,15 +155,14 @@ async function edgeFunctionAPI<T = Record<string, unknown>>(
     // If JWT expired, try to refresh the session and retry once
     if (errorMessage.includes("JWT") && errorMessage.includes("expired") && retryCount < 1) {
       console.log("[Workspace] JWT expired, refreshing session and retrying...");
-      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      
-      if (refreshError || !refreshData.session?.access_token) {
-        console.error("[Workspace] Failed to refresh session:", refreshError);
+      const refreshedToken = await getValidAccessToken();
+
+      if (!refreshedToken || refreshedToken === accessToken) {
         throw new Error("Session expired. Please log in again.");
       }
-      
+
       // Retry with the new access token
-      return edgeFunctionAPI<T>(action, refreshData.session.access_token, data, retryCount + 1);
+      return edgeFunctionAPI<T>(action, refreshedToken, data, retryCount + 1);
     }
     
     throw new Error(errorMessage);
@@ -158,7 +189,8 @@ export function useWorkspace(projectId: string | undefined) {
   // Using Edge Functions since they have access to Lovable Cloud's service_role key
   const [useRailwayBackend] = useState(false);
 
-  const accessToken = session?.access_token;
+  // Note: do not rely on session.access_token directly during refresh races.
+  const isAuthed = !!session;
 
   // =========================================================================
   // GET OR CREATE WORKSPACE
@@ -172,6 +204,7 @@ export function useWorkspace(projectId: string | undefined) {
   } = useQuery({
     queryKey: ["workspace", projectId],
     queryFn: async () => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !projectId) return null;
       
       if (useRailwayBackend) {
@@ -188,7 +221,7 @@ export function useWorkspace(projectId: string | undefined) {
         return result.workspace as Workspace;
       }
     },
-    enabled: !!accessToken && !!projectId,
+    enabled: isAuthed && !!projectId,
     staleTime: 30000,
     retry: (failureCount, error) => {
       // If Railway fails, could add fallback logic here
@@ -310,6 +343,7 @@ export function useWorkspace(projectId: string | undefined) {
   } = useQuery({
     queryKey: ["workspace-files", workspaceId],
     queryFn: async () => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !workspaceId) return [];
       
       if (useRailwayBackend) {
@@ -324,7 +358,7 @@ export function useWorkspace(projectId: string | undefined) {
         return result.files as WorkspaceFile[];
       }
     },
-    enabled: !!accessToken && !!workspaceId,
+    enabled: isAuthed && !!workspaceId,
     staleTime: 10000,
   });
 
@@ -336,6 +370,7 @@ export function useWorkspace(projectId: string | undefined) {
 
   const getFile = useCallback(
     async (filePath: string): Promise<WorkspaceFile | null> => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !workspaceId) return null;
       
       if (useRailwayBackend) {
@@ -353,7 +388,7 @@ export function useWorkspace(projectId: string | undefined) {
         return result.file;
       }
     },
-    [accessToken, workspaceId, useRailwayBackend]
+    [workspaceId, useRailwayBackend]
   );
 
   // =========================================================================
@@ -366,6 +401,7 @@ export function useWorkspace(projectId: string | undefined) {
   } = useQuery({
     queryKey: ["workspace-sessions", workspaceId],
     queryFn: async () => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !workspaceId) return [];
       
       if (useRailwayBackend) {
@@ -380,7 +416,7 @@ export function useWorkspace(projectId: string | undefined) {
         return result.sessions as GenerationSession[];
       }
     },
-    enabled: !!accessToken && !!workspaceId,
+    enabled: isAuthed && !!workspaceId,
     staleTime: 5000,
   });
 
@@ -396,6 +432,7 @@ export function useWorkspace(projectId: string | undefined) {
   } = useQuery({
     queryKey: ["workspace-operations", workspaceId],
     queryFn: async () => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !workspaceId) return [];
       
       if (useRailwayBackend) {
@@ -410,7 +447,7 @@ export function useWorkspace(projectId: string | undefined) {
         return result.operations as FileOperation[];
       }
     },
-    enabled: !!accessToken && !!workspaceId,
+    enabled: isAuthed && !!workspaceId,
     staleTime: 5000,
   });
 
@@ -425,6 +462,7 @@ export function useWorkspace(projectId: string | undefined) {
 
   const generate = useCallback(
     async (prompt: string) => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !workspaceId) {
         throw new Error("Not authenticated or no workspace");
       }
@@ -474,7 +512,7 @@ export function useWorkspace(projectId: string | undefined) {
         setIsGenerating(false);
       }
     },
-    [accessToken, workspaceId, useRailwayBackend, refetchFiles, refetchSessions, refetchOperations, refetchWorkspace]
+    [workspaceId, useRailwayBackend, refetchFiles, refetchSessions, refetchOperations, refetchWorkspace]
   );
 
   // =========================================================================
@@ -483,6 +521,7 @@ export function useWorkspace(projectId: string | undefined) {
 
   const estimateCredits = useCallback(
     async (prompt: string) => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken || !workspaceId) return null;
       
       if (useRailwayBackend) {
@@ -497,7 +536,7 @@ export function useWorkspace(projectId: string | undefined) {
       
       return null;
     },
-    [accessToken, workspaceId, useRailwayBackend]
+    [workspaceId, useRailwayBackend]
   );
 
   // =========================================================================
@@ -506,6 +545,7 @@ export function useWorkspace(projectId: string | undefined) {
 
   const getSessionStatus = useCallback(
     async (sessionId: string) => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken) return null;
       
       if (useRailwayBackend) {
@@ -519,7 +559,7 @@ export function useWorkspace(projectId: string | undefined) {
       
       return null;
     },
-    [accessToken, useRailwayBackend]
+    [useRailwayBackend]
   );
 
   // =========================================================================
@@ -528,6 +568,7 @@ export function useWorkspace(projectId: string | undefined) {
 
   const cancelGeneration = useCallback(
     async (sessionId: string) => {
+      const accessToken = await getValidAccessToken();
       if (!accessToken) return;
       
       if (useRailwayBackend) {
@@ -542,7 +583,7 @@ export function useWorkspace(projectId: string | undefined) {
       setIsGenerating(false);
       setGenerationStatus(null);
     },
-    [accessToken, useRailwayBackend]
+    [useRailwayBackend]
   );
 
   // =========================================================================
