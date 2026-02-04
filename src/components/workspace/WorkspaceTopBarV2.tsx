@@ -36,6 +36,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import RouteCommandBar from './RouteCommandBar';
 import ProjectDropdown from './ProjectDropdown';
 import PublishDropdown from './PublishDropdown';
+import GitHubExportDialog from './GitHubExportDialog';
 import { useAuth } from '@/hooks/useAuth';
 
 // Interface mode types
@@ -57,6 +58,7 @@ interface WorkspaceTopBarV2Props {
   deviceSize: 'desktop' | 'tablet' | 'mobile';
   onDeviceSizeChange: (size: 'desktop' | 'tablet' | 'mobile') => void;
   previewHtml?: string;
+  workspaceFiles?: Array<{ path: string; content: string }>;
 }
 
 // Mode configuration
@@ -90,9 +92,11 @@ export default function WorkspaceTopBarV2({
   deviceSize,
   onDeviceSizeChange,
   previewHtml = '',
+  workspaceFiles = [],
 }: WorkspaceTopBarV2Props) {
   const { user } = useAuth();
   const [isPublishOpen, setIsPublishOpen] = useState(false);
+  const [isGitHubExportOpen, setIsGitHubExportOpen] = useState(false);
 
   // Cycle through device sizes on click
   const handleDeviceClick = () => {
@@ -274,14 +278,13 @@ export default function WorkspaceTopBarV2({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem className="gap-2 cursor-pointer">
+            <DropdownMenuItem 
+              className="gap-2 cursor-pointer"
+              onClick={() => setIsGitHubExportOpen(true)}
+            >
               <Upload className="h-4 w-4" />
               Export to GitHub
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">
-              GitHub integration coming soon
-            </div>
           </DropdownMenuContent>
         </DropdownMenu>
         
@@ -294,6 +297,15 @@ export default function WorkspaceTopBarV2({
           onOpenChange={setIsPublishOpen}
         />
       </div>
+
+      {/* GitHub Export Dialog */}
+      <GitHubExportDialog
+        isOpen={isGitHubExportOpen}
+        onClose={() => setIsGitHubExportOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
+        files={workspaceFiles}
+      />
     </div>
   );
 }

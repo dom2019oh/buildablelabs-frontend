@@ -17,6 +17,7 @@ import WebContainerPreview from './WebContainerPreview';
 import FileExplorer from './FileExplorer';
 import CodeViewer from './CodeViewer';
 import VersionHistoryPanel from './VersionHistoryPanel';
+import VersionHistoryView from './VersionHistoryView';
 import ThinkingIndicatorV2 from './ThinkingIndicatorV2';
 import PreviewShowcase from './PreviewShowcase';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -99,8 +100,52 @@ export default function ProjectWorkspaceV3() {
   const [sandboxStatus, setSandboxStatus] = useState<string>('idle');
   const [deviceSize, setDeviceSize] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [currentActions, setCurrentActions] = useState<string[]>([]);
+  const [showHistoryInPreview, setShowHistoryInPreview] = useState(false);
 
-  const availableRoutes = ['/', '/about', '/contact', '/dashboard', '/settings'];
+  // Compute available routes from page files dynamically
+  const availableRoutes = useMemo(() => {
+    const routes = new Set<string>(['/']);
+    
+    // Check workspace files for page components
+    if (workspaceFiles && workspaceFiles.length > 0) {
+      workspaceFiles.forEach(file => {
+        const path = file.file_path;
+        // Look for page files in common patterns
+        if (path.includes('/pages/') || path.includes('/routes/')) {
+          const match = path.match(/(?:pages|routes)\/([^.]+)/);
+          if (match) {
+            const routeName = match[1].toLowerCase();
+            if (routeName !== 'index' && routeName !== '_app' && routeName !== '_document') {
+              routes.add(`/${routeName}`);
+            }
+          }
+        }
+      });
+    }
+    
+    // Also check in-memory files
+    files.forEach((_, filePath) => {
+      if (filePath.includes('/pages/') || filePath.includes('/routes/')) {
+        const match = filePath.match(/(?:pages|routes)\/([^.]+)/);
+        if (match) {
+          const routeName = match[1].toLowerCase();
+          if (routeName !== 'index' && routeName !== '_app' && routeName !== '_document') {
+            routes.add(`/${routeName}`);
+          }
+        }
+      }
+    });
+    
+    return Array.from(routes).sort();
+  }, [workspaceFiles, files]);
+
+  // Prepare workspace files for export
+  const exportableFiles = useMemo(() => {
+    return Array.from(files.values()).map(f => ({
+      path: f.path,
+      content: f.content,
+    }));
+  }, [files]);
   
   // Sync workspace files to local store
   useEffect(() => {
@@ -404,12 +449,13 @@ export default function ProjectWorkspaceV3() {
           const url = `https://${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.buildablelabs.dev`;
           window.open(url, '_blank');
         }}
-        onToggleHistory={() => setIsHistoryOpen(!isHistoryOpen)}
+        onToggleHistory={() => setShowHistoryInPreview(!showHistoryInPreview)}
         onCollapseChat={() => setIsChatCollapsed(!isChatCollapsed)}
         isChatCollapsed={isChatCollapsed}
         deviceSize={deviceSize}
         onDeviceSizeChange={setDeviceSize}
         previewHtml={previewHtml || ''}
+        workspaceFiles={exportableFiles}
       />
 
       {/* Version History Panel */}
@@ -541,6 +587,28 @@ export default function ProjectWorkspaceV3() {
                 <p className="text-muted-foreground text-sm">Performance metrics coming soon</p>
               </div>
             </div>
+          ) : showHistoryInPreview ? (
+            /* Version History View in Preview Area */
+            <VersionHistoryView
+              versions={versions.map(v => ({
+                id: v.id,
+                version_number: v.version_number,
+                label: v.label,
+                files: v.files as Array<{ path: string; content: string }>,
+                preview_html: v.preview_html,
+                created_at: v.created_at,
+              }))}
+              currentVersion={currentVersionNumber}
+              onPreviewVersion={(version) => {
+                if (version.preview_html) {
+                  setPreviewHtml(version.preview_html);
+                  handleRefreshPreview();
+                }
+              }}
+              onRestoreVersion={handleRestoreVersion}
+              isRestoring={isRestoring}
+              onClose={() => setShowHistoryInPreview(false)}
+            />
           ) : (
             /* Preview Panel */
             <div className="flex-1 h-full flex flex-col bg-zinc-900">
