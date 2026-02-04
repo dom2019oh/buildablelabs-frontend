@@ -499,7 +499,152 @@ export default function Index() {
 };
 
 // =============================================================================
-// SYSTEM PROMPTS - Production quality
+// COMPONENT LIBRARY - Pre-built templates for AI to use
+// =============================================================================
+
+const COMPONENT_LIBRARY = {
+  navbar: {
+    name: "Glass Navbar",
+    description: "Modern glassmorphism navigation with blur effects",
+    code: `<nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-white/10 border-b border-white/10">
+      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500" />
+          <span className="font-bold text-lg text-white">Brand</span>
+        </div>
+        <div className="flex items-center gap-8">
+          {['Products', 'Features', 'Pricing'].map((link) => (
+            <a key={link} href="#" className="text-sm text-gray-300 hover:text-white transition-colors">{link}</a>
+          ))}
+          <button className="px-4 py-2 text-sm font-medium rounded-lg bg-white text-black hover:bg-gray-100 transition-colors">Get Started</button>
+        </div>
+      </div>
+    </nav>`
+  },
+  hero: {
+    name: "Gradient Hero",
+    description: "Bold gradient background with animated elements",
+    code: `<section className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-black to-pink-900 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(120,0,255,0.3),transparent_50%)]" />
+      <div className="text-center z-10 px-6">
+        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-purple-300 text-sm mb-6">
+          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />Now in Beta
+        </span>
+        <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent">Build Something<br/>Extraordinary</h1>
+        <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">The next-generation platform for developers.</p>
+        <div className="flex items-center justify-center gap-4">
+          <button className="px-6 py-3 rounded-lg bg-white text-black font-medium hover:bg-gray-100">Start Building →</button>
+          <button className="px-6 py-3 rounded-lg border border-white/20 text-white font-medium hover:bg-white/10">Watch Demo</button>
+        </div>
+      </div>
+    </section>`
+  },
+  features: {
+    name: "Bento Grid Features",
+    description: "Modern bento-style grid layout",
+    code: `<section className="py-24 px-6 bg-black">
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-4xl font-bold text-center mb-4 text-white">Why Choose Us</h2>
+        <p className="text-gray-400 text-center mb-16 max-w-2xl mx-auto">Everything you need to build modern applications</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2 p-8 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10">
+            <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-4">⚡</div>
+            <h3 className="text-2xl font-bold mb-2 text-white">Lightning Fast</h3>
+            <p className="text-gray-400">Built for speed with optimized performance.</p>
+          </div>
+          <div className="p-8 rounded-2xl bg-white/5 border border-white/10">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4">🔒</div>
+            <h3 className="text-xl font-bold mb-2 text-white">Secure</h3>
+            <p className="text-gray-400 text-sm">Enterprise-grade security.</p>
+          </div>
+        </div>
+      </div>
+    </section>`
+  },
+  pricing: {
+    name: "Modern Pricing",
+    description: "Clean pricing cards with gradient accent",
+    code: `<section className="py-24 px-6 bg-black">
+      <h2 className="text-4xl font-bold text-center mb-4 text-white">Simple Pricing</h2>
+      <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-6 mt-16">
+        <div className="p-8 rounded-2xl bg-white/5 border border-white/10">
+          <h3 className="text-lg font-medium mb-2 text-white">Starter</h3>
+          <div className="text-4xl font-bold text-white mb-6">$9<span className="text-lg text-gray-400">/mo</span></div>
+          <button className="w-full py-3 rounded-lg border border-white/20 text-white hover:bg-white/10">Get Started</button>
+        </div>
+        <div className="p-8 rounded-2xl bg-gradient-to-b from-purple-600/20 to-pink-600/20 border border-purple-500/30 relative">
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-xs font-medium text-white">Popular</div>
+          <h3 className="text-lg font-medium mb-2 text-white">Pro</h3>
+          <div className="text-4xl font-bold text-white mb-6">$29<span className="text-lg text-gray-400">/mo</span></div>
+          <button className="w-full py-3 rounded-lg bg-white text-black font-medium hover:bg-gray-100">Get Started</button>
+        </div>
+      </div>
+    </section>`
+  },
+  testimonials: {
+    name: "Testimonial Cards",
+    description: "Social proof with ratings",
+    code: `<section className="py-24 px-6 bg-black">
+      <h2 className="text-4xl font-bold text-center mb-16 text-white">Loved by Developers</h2>
+      <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
+        <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
+          <div className="flex gap-1 mb-4 text-yellow-400">★★★★★</div>
+          <p className="text-gray-300 mb-6">"Best developer tool I've used."</p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500" />
+            <div>
+              <div className="font-medium text-sm text-white">Sarah Chen</div>
+              <div className="text-gray-400 text-xs">Developer @ Google</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>`
+  },
+  cta: {
+    name: "Gradient CTA",
+    description: "Eye-catching call-to-action",
+    code: `<section className="py-24 px-6 bg-black">
+      <div className="max-w-4xl mx-auto rounded-3xl bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500 p-12 text-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-black/20" />
+        <div className="relative z-10">
+          <h2 className="text-4xl font-bold mb-4 text-white">Ready to Get Started?</h2>
+          <p className="text-white/80 mb-8">Join thousands of developers building amazing things.</p>
+          <div className="flex items-center justify-center gap-4">
+            <button className="px-8 py-4 rounded-xl bg-white text-black font-semibold hover:bg-gray-100">Start Free Trial</button>
+            <button className="px-8 py-4 rounded-xl border-2 border-white/30 text-white font-medium hover:bg-white/10">Book a Demo</button>
+          </div>
+        </div>
+      </div>
+    </section>`
+  },
+  footer: {
+    name: "Modern Footer",
+    description: "Comprehensive footer with columns",
+    code: `<footer className="py-16 px-6 bg-black border-t border-white/10">
+      <div className="max-w-6xl mx-auto grid md:grid-cols-4 gap-8">
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500" />
+            <span className="font-bold text-lg text-white">Brand</span>
+          </div>
+          <p className="text-gray-400 text-sm">Building the future of web development.</p>
+        </div>
+        {['Product', 'Company', 'Legal'].map((col) => (
+          <div key={col}>
+            <h4 className="font-medium mb-4 text-white">{col}</h4>
+            <ul className="space-y-2 text-sm text-gray-400">
+              {['Link 1', 'Link 2', 'Link 3'].map((l, i) => <li key={i}><a href="#" className="hover:text-white transition-colors">{l}</a></li>)}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </footer>`
+  }
+};
+
+// =============================================================================
+// SYSTEM PROMPTS - Production quality with Component Library
 // =============================================================================
 
 const BUILDABLE_SYSTEM_PROMPT = `You are Buildable — an expert AI that generates production-ready React websites like Lovable.
@@ -510,6 +655,17 @@ const BUILDABLE_SYSTEM_PROMPT = `You are Buildable — an expert AI that generat
 3. Every component must be fully functional and self-contained
 4. Include ALL necessary imports (React, lucide-react icons, etc.)
 5. Make everything responsive (mobile-first approach)
+6. ALWAYS check if existing files exist before creating new ones - modify them instead
+
+## COMPONENT LIBRARY - USE THESE PATTERNS:
+You have access to a pre-built component library. Use these patterns as inspiration and adapt them:
+- Navbar: Glass/blur effects with backdrop-blur-xl, border-white/10, bg-white/10
+- Hero: Gradient backgrounds (from-purple-900 via-black to-pink-900), animated badges, bold CTAs
+- Features: Bento grid layouts (col-span-2 variations), card borders with border-white/10
+- Pricing: Popular tier with gradient bg-gradient-to-b from-purple-600/20, "Popular" badge
+- Testimonials: Star ratings, avatar gradients, quote cards
+- CTA: Full-width gradient banners with overlay bg-black/20
+- Footer: Multi-column layout, social icons, brand section
 
 ## OUTPUT FORMAT:
 Each file must use this exact format:
@@ -527,31 +683,23 @@ Each file must use this exact format:
 - src/components/Pricing.tsx - Pricing cards (if applicable)
 - src/components/[SectionName].tsx - Additional sections as needed
 
-## TAILWIND SEMANTIC TOKENS (ALWAYS USE THESE):
-Colors:
-- bg-background, bg-card, bg-muted, bg-primary, bg-secondary, bg-accent
-- text-foreground, text-muted-foreground, text-primary, text-primary-foreground
-- border-border, border-input
+## TAILWIND PATTERNS (FROM COMPONENT LIBRARY):
+Colors/Backgrounds:
+- bg-gradient-to-br from-purple-900 via-black to-pink-900
+- bg-white/5, bg-white/10, bg-purple-500/20
+- backdrop-blur-xl, bg-black/20
 
-Utilities:
-- rounded-md, rounded-lg, rounded-xl, rounded-2xl
-- shadow-sm, shadow-md, shadow-lg, shadow-xl
-- hover:*, focus:*, transition-*
+Borders/Cards:
+- border border-white/10, border-purple-500/30
+- rounded-2xl, rounded-3xl, rounded-xl
 
-## COMPONENT REQUIREMENTS:
-1. Every component needs proper TypeScript interfaces for props
-2. Use lucide-react for all icons (import specific icons)
-3. Add hover/focus states for interactive elements
-4. Include smooth transitions (transition-all, transition-colors)
-5. Use proper semantic HTML (section, nav, main, footer, etc.)
+Text:
+- text-white, text-gray-400, text-purple-300
+- bg-gradient-to-r from-white to-pink-200 bg-clip-text text-transparent
 
-## EXAMPLE QUALITY LEVEL:
-Components should be visually polished like Tailwind UI or shadcn/ui:
-- Gradient backgrounds for hero sections
-- Subtle shadows and borders
-- Proper spacing (py-24, px-4 sm:px-6 lg:px-8)
-- Grid layouts for features (grid-cols-1 md:grid-cols-2 lg:grid-cols-3)
-- Hover effects that feel premium (hover:shadow-lg, hover:scale-105)
+Effects:
+- hover:bg-white/10, hover:text-white, transition-colors
+- animate-pulse for status indicators
 
 IMPORTANT: Generate AT LEAST 5-8 complete files for any project. Never give minimal output.`;
 
@@ -574,6 +722,14 @@ const MODIFY_PROJECT_PROMPT = `${BUILDABLE_SYSTEM_PROMPT}
 
 ## YOUR TASK:
 Modify the existing project based on the user's request. You have access to the current files below.
+
+IMPORTANT RULES FOR MODIFICATIONS:
+1. REVIEW all existing files first to understand the current structure
+2. Only create NEW files if they don't already exist
+3. When modifying, keep existing code and add/change only what's needed
+4. Maintain consistency with existing patterns and styles
+5. Double-check imports - don't duplicate or break existing ones
+
 Only output the files that need to be created or modified. Keep the same quality standards.`;
 
 // =============================================================================

@@ -660,9 +660,21 @@ export default function ProjectWorkspaceV3() {
                   </div>
                 )}
 
-                {/* Show showcase when no messages (new chat/project state) */}
-                {messages.length === 0 && !isGenerating ? (
+                {/* Priority: 1) PreviewShowcase for empty state, 2) Preview HTML if available, 3) Sandbox/LivePreview */}
+                {messages.length === 0 && !isGenerating && !previewHtml ? (
                   <PreviewShowcase isVisible={true} />
+                ) : previewHtml ? (
+                  <iframe
+                    key={previewKey}
+                    srcDoc={previewHtml}
+                    title="Project Preview"
+                    className="w-full h-full border-0 bg-white"
+                    sandbox="allow-scripts"
+                    style={{
+                      maxWidth: deviceSize === 'mobile' ? '390px' : deviceSize === 'tablet' ? '768px' : '100%',
+                      margin: deviceSize !== 'desktop' ? '0 auto' : undefined,
+                    }}
+                  />
                 ) : previewMode === 'sandbox' ? (
                   <WebContainerPreview
                     projectId={projectId!}
@@ -676,27 +688,8 @@ export default function ProjectWorkspaceV3() {
                       }
                     }}
                   />
-                ) : previewHtml ? (
-                  <iframe
-                    key={previewKey}
-                    srcDoc={previewHtml}
-                    title="Project Preview"
-                    className="w-full h-full border-0 bg-white"
-                    sandbox="allow-scripts"
-                    style={{
-                      maxWidth: deviceSize === 'mobile' ? '390px' : deviceSize === 'tablet' ? '768px' : '100%',
-                      margin: deviceSize !== 'desktop' ? '0 auto' : undefined,
-                    }}
-                  />
                 ) : (
-                  <LivePreview
-                    key={previewKey}
-                    projectId={projectId!}
-                    deployedUrl={project.deployed_url}
-                    currentRoute={currentRoute}
-                    status={project.status}
-                    isFullWidth={isChatCollapsed}
-                  />
+                  <PreviewShowcase isVisible={true} />
                 )}
               </div>
             </div>
