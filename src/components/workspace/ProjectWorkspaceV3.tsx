@@ -9,7 +9,13 @@ import { useProjectMessages } from '@/hooks/useProjectMessages';
 import { useBuildableAI } from '@/hooks/useBuildableAI';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useFileVersions } from '@/hooks/useFileVersions';
-import { useProjectFilesStore, generatePreviewHtml, compileComponentToHtml, stripCodeBlocksFromResponse } from '@/stores/projectFilesStore';
+import {
+  useProjectFilesStore,
+  generatePreviewHtml,
+  compileComponentToHtml,
+  compileWorkspaceEntryToHtml,
+  stripCodeBlocksFromResponse,
+} from '@/stores/projectFilesStore';
 import WorkspaceTopBarV2 from './WorkspaceTopBarV2';
 import ChatPanelV2 from './ChatPanelV2';
 import LivePreview from './LivePreview';
@@ -183,7 +189,8 @@ export default function ProjectWorkspaceV3() {
       // Generate/refresh preview from best available entry file
       const entry = pickPreviewEntryFile(workspaceFiles.map(f => ({ file_path: f.file_path, content: f.content })));
       if (entry) {
-        const html = compileComponentToHtml(entry.content);
+        // Inline simple component composition to avoid blank previews for pages built from sub-components.
+        const html = compileWorkspaceEntryToHtml(entry.path, workspaceFiles);
         const fullHtml = generatePreviewHtml(html);
         setPreviewHtml(fullHtml);
         setPreviewKey((prev) => prev + 1);
@@ -214,7 +221,11 @@ export default function ProjectWorkspaceV3() {
       // Find best entry component and generate preview
       const entry = pickPreviewEntryFile(generatedFiles.map(f => ({ path: f.path, content: f.content })));
       if (entry) {
-        const html = compileComponentToHtml(entry.content);
+        // We only have the generated batch here; still inline within this batch.
+        const html = compileWorkspaceEntryToHtml(
+          entry.path,
+          generatedFiles.map((f) => ({ file_path: f.path, content: f.content })),
+        );
         const fullHtml = generatePreviewHtml(html);
         setPreviewHtml(fullHtml);
         setPreviewKey((prev) => prev + 1);

@@ -401,6 +401,106 @@ export function compileComponentToHtml(tsxCode: string): string {
   }
 }
 
+// Compile an entry file using a small, safe inliner that expands simple component composition
+// (e.g. <Navbar />) into static HTML by pulling JSX from sibling component files.
+// This fixes "white preview" cases where the entry page only renders other components.
+export function compileWorkspaceEntryToHtml(
+  entryFilePath: string,
+  files: Array<{ file_path: string; content: string }>,
+): string {
+  try {
+    const fileMap = new Map(files.map((f) => [f.file_path, f.content] as const));
+    const entryCode = fileMap.get(entryFilePath);
+    if (!entryCode) {
+      return generatePreviewFallback('Preview unavailable', 'Entry file not found');
+    }
+
+    // Build a map: ComponentName -> JSX string (raw JSX)
+    const componentJsxByName = new Map<string, string>();
+    for (const [path, code] of fileMap.entries()) {
+      if (!path.endsWith('.tsx') && !path.endsWith('.jsx')) continue;
+      const name = inferDefaultExportName(code);
+      if (!name) continue;
+      const jsx = extractJsxFromComponent(code);
+      if (!jsx) continue;
+      componentJsxByName.set(name, jsx);
+    }
+
+    const entryJsx = extractJsxFromComponent(entryCode);
+    if (!entryJsx) {
+      // Fallback to existing behavior
+      return compileComponentToHtml(entryCode);
+    }
+
+    const inlinedJsx = inlineKnownComponents(entryJsx, componentJsxByName);
+    return convertJsxToStaticHtml(inlinedJsx, entryCode);
+  } catch (e) {
+    console.error('compileWorkspaceEntryToHtml error:', e);
+    const entryCode = files.find((f) => f.file_path === entryFilePath)?.content;
+    return entryCode ? compileComponentToHtml(entryCode) : generatePreviewFallback('Preview failed', '');
+  }
+}
+
+function inferDefaultExportName(code: string): string | null {
+  // export default function Name() {}
+  const fn = code.match(/export\s+default\s+function\s+([A-Za-z0-9_]+)/);
+  if (fn?.[1]) return fn[1];
+
+  // const Name = () => ...; export default Name;
+  const exportName = code.match(/export\s+default\s+([A-Za-z0-9_]+)\s*;?/);
+  if (exportName?.[1] && exportName[1] !== 'function') return exportName[1];
+
+  return null;
+}
+
+function extractJsxFromComponent(tsxCode: string): string | null {
+  // Mirror the patterns in compileComponentToHtml, but return JSX instead of HTML.
+  const returnMatch = tsxCode.match(/return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}[\s\S]*?$/);
+  if (returnMatch?.[1]) return returnMatch[1];
+
+  const arrowMatch = tsxCode.match(/=>\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*$/);
+  if (arrowMatch?.[1]) return arrowMatch[1];
+
+  const simpleReturn = tsxCode.match(/return\s+(<[^;]+);?\s*$/m);
+  if (simpleReturn?.[1]) return simpleReturn[1];
+
+  return null;
+}
+
+function inlineKnownComponents(
+  jsx: string,
+  componentJsxByName: Map<string, string>,
+  depth = 0,
+): string {
+  if (depth > 4) return jsx; // safety
+
+  let out = jsx;
+
+  // Replace self-closing tags: <Navbar />
+  out = out.replace(
+    /<([A-Z][A-Za-z0-9_]*)\b[^>]*\/>/g,
+    (full, name: string) => {
+      const replacement = componentJsxByName.get(name);
+      if (!replacement) return full;
+      const inlined = inlineKnownComponents(replacement, componentJsxByName, depth + 1);
+      return `<div data-buildable-inline="${name}">${inlined}</div>`;
+    },
+  );
+
+  // Replace paired tags: <Layout>...</Layout> (we ignore children for now)
+  out = out.replace(
+    /<([A-Z][A-Za-z0-9_]*)\b[^>]*>([\s\S]*?)<\/\1>/g,
+    (full, name: string) => {
+      const replacement = componentJsxByName.get(name);
+      if (!replacement) return full;
+      const inlined = inlineKnownComponents(replacement, componentJsxByName, depth + 1);
+      return `<div data-buildable-inline="${name}">${inlined}</div>`;
+    },
+  );
+
+  return out;
+}
+
 // Generate a beautiful fallback preview
 function generatePreviewFallback(title: string, subtitle: string): string {
   return `
