@@ -446,8 +446,20 @@ export default function ProjectWorkspaceV3() {
         onModeChange={setActiveMode}
         onRefreshPreview={handleRefreshPreview}
         onOpenInNewTab={() => {
-          const url = `https://${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.buildablelabs.dev`;
-          window.open(url, '_blank');
+          // Use the actual deployed URL or preview in blob
+          if (project.deployed_url) {
+            window.open(project.deployed_url, '_blank');
+          } else if (previewHtml) {
+            // Open preview HTML in a new tab
+            const blob = new Blob([previewHtml], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+          } else {
+            toast({
+              title: 'No preview available',
+              description: 'Generate some content first to preview.',
+            });
+          }
         }}
         onToggleHistory={() => setShowHistoryInPreview(!showHistoryInPreview)}
         onCollapseChat={() => setIsChatCollapsed(!isChatCollapsed)}
