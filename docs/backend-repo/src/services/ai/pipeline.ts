@@ -65,6 +65,9 @@ export interface PipelineResult {
   stages: StageResult[];
   suggestions?: Array<{ title: string; description: string; priority: string }>;
   error?: string;
+  // NEW: Persona response for chat display
+  aiMessage: string;
+  routes: string[];
 }
 
 export interface StageResult {
@@ -374,6 +377,12 @@ export class GenerationPipeline {
       }
 
       // =======================================================================
+      // STAGE 5: PERSONA - Generate friendly AI response
+      // =======================================================================
+      const isNewProject = (await db.getWorkspaceFiles(this.workspaceId)).length <= generatedFiles.length;
+      const personaResult = generatePersonaResponse(this.prompt, generatedFiles, plan, isNewProject);
+
+      // =======================================================================
       // COMPLETE
       // =======================================================================
       const durationMs = Date.now() - startTime;
@@ -406,6 +415,8 @@ export class GenerationPipeline {
         modelsUsed: [...new Set(modelsUsed)],
         stages,
         suggestions,
+        aiMessage: personaResult.message,
+        routes: personaResult.routes,
       };
 
     } catch (error) {
@@ -429,6 +440,8 @@ export class GenerationPipeline {
         modelsUsed,
         stages,
         error: errorMessage,
+        aiMessage: "Oops! Something went wrong while building your project. Let me try again...",
+        routes: ["/"],
       };
     }
   }
@@ -603,7 +616,72 @@ Context: Part of refinement request "${refinementPrompt}"`,
         modelsUsed,
         stages,
         error: errorMessage,
+        aiMessage: "Oops! Something went wrong. Let me try again...",
+        routes: ["/"],
       };
     }
   }
+}
+
+// =============================================================================
+// PERSONA RESPONSE GENERATOR
+// =============================================================================
+
+function generatePersonaResponse(
+  prompt: string,
+  files: GeneratedFile[],
+  plan: ProjectPlan,
+  isNewProject: boolean
+): { message: string; routes: string[]; suggestions: string[] } {
+  // Extract routes from plan
+  const routes = plan.routes || ["/"];
+
+  // Generate contextual suggestions
+  const suggestions: string[] = [];
+  const hasNavbar = files.some(f => f.path.toLowerCase().includes("navbar"));
+  const hasHero = files.some(f => f.path.toLowerCase().includes("hero"));
+  const hasPricing = files.some(f => f.path.toLowerCase().includes("pricing"));
+  const hasContact = files.some(f => f.path.toLowerCase().includes("contact"));
+
+  if (!hasContact) suggestions.push("Add a contact form");
+  if (!hasPricing) suggestions.push("Add a pricing section");
+  if (hasHero) suggestions.push("Change the hero image or colors");
+  suggestions.push("Browse the [Components Library](/dashboard/components) for more sections");
+  suggestions.push("Try a different style from the [Backgrounds Library](/dashboard/backgrounds)");
+
+  // Generate friendly message
+  const fileList = files.map(f => f.path.split("/").pop()).slice(0, 5).join(", ");
+  const projectType = detectProjectType(prompt);
+  const emoji = getProjectEmoji(projectType);
+
+  let message: string;
+  if (isNewProject) {
+    message = `${emoji} Creating your ${projectType}...\n\n{THINKING_INDICATOR}\n\nDone! I created ${files.length} files including ${fileList}. Everything's styled and ready to preview!\n\n💡 **Next steps:**\n${suggestions.slice(0, 3).map(s => `- ${s}`).join("\n")}`;
+  } else {
+    message = `Making those changes now...\n\n{THINKING_INDICATOR}\n\nDone! I updated ${files.length} file(s). Take a look at the preview!\n\n💡 **Want more?**\n${suggestions.slice(0, 2).map(s => `- ${s}`).join("\n")}`;
+  }
+
+  return { message, routes, suggestions: suggestions.slice(0, 3) };
+}
+
+function detectProjectType(prompt: string): string {
+  const p = prompt.toLowerCase();
+  if (p.includes("bakery") || p.includes("cafe") || p.includes("restaurant")) return "bakery landing page";
+  if (p.includes("portfolio")) return "portfolio site";
+  if (p.includes("e-commerce") || p.includes("shop") || p.includes("store")) return "e-commerce site";
+  if (p.includes("dashboard")) return "dashboard";
+  if (p.includes("blog")) return "blog";
+  if (p.includes("saas")) return "SaaS landing page";
+  if (p.includes("landing")) return "landing page";
+  return "website";
+}
+
+function getProjectEmoji(type: string): string {
+  if (type.includes("bakery")) return "🥐";
+  if (type.includes("portfolio")) return "✨";
+  if (type.includes("e-commerce") || type.includes("shop")) return "🛒";
+  if (type.includes("dashboard")) return "📊";
+  if (type.includes("blog")) return "📝";
+  if (type.includes("saas")) return "🚀";
+  return "🎨";
 }
