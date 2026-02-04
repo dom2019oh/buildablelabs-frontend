@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { Check, Copy, Edit2, Save, X, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,14 +32,17 @@ function getMonacoLanguage(language: string): string {
   return languageMap[language] || 'plaintext';
 }
 
-export default function CodeViewer({ 
-  code, 
-  language = 'typescript', 
-  filename, 
-  className,
-  onSave,
-  readOnly = false,
-}: CodeViewerProps) {
+const CodeViewer = forwardRef<HTMLDivElement, CodeViewerProps>(function CodeViewer(
+  {
+    code,
+    language = 'typescript',
+    filename,
+    className,
+    onSave,
+    readOnly = false,
+  },
+  ref,
+) {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedCode, setEditedCode] = useState(code);
@@ -159,7 +162,7 @@ export default function CodeViewer({
   const monacoLanguage = getMonacoLanguage(language);
 
   return (
-    <div className={cn('flex flex-col h-full bg-[#1e1e1e] rounded-lg overflow-hidden', className)}>
+    <div ref={ref} className={cn('flex flex-col h-full bg-[#1e1e1e] rounded-lg overflow-hidden', className)}>
       {/* Header */}
       {filename && (
         <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
@@ -286,4 +289,8 @@ export default function CodeViewer({
       </div>
     </div>
   );
-}
+});
+
+CodeViewer.displayName = 'CodeViewer';
+
+export default CodeViewer;
