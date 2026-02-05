@@ -34,6 +34,9 @@ export interface UserSubscription {
   billing_period_end: string;
   is_annual: boolean;
   status: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
   created_at: string;
   updated_at: string;
 }

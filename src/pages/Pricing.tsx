@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { Check, Zap, Users, Building2, Info } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Check, Zap, Users, Building2, Info, Loader2 } from 'lucide-react';
 import Aurora from '@/components/Aurora';
 import Navbar from '@/components/Navbar';
 import {
@@ -25,39 +25,36 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { useSubscriptionPlans } from '@/hooks/useSubscriptionPlans';
+import { useStripeCheckout } from '@/hooks/useStripeCheckout';
+import { useCredits } from '@/hooks/useCredits';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from '@/hooks/use-toast';
 
-// Credit tier pricing configuration
-const proCreditTiers = [
-  { credits: 50, price: 15 },
-  { credits: 100, price: 20 },
-  { credits: 200, price: 25 },
-  { credits: 300, price: 35 },
-  { credits: 400, price: 45 },
-  { credits: 500, price: 55 },
-  { credits: 750, price: 75 },
-  { credits: 1000, price: 95 },
-  { credits: 1500, price: 135 },
-  { credits: 2000, price: 175 },
-  { credits: 3000, price: 250 },
-  { credits: 5000, price: 400 },
-  { credits: 10000, price: 700 },
-];
+interface CreditTierWithStripe {
+  credits: number;
+  price: number;
+  priceId: string | null;
+}
 
-const businessCreditTiers = [
-  { credits: 100, price: 29 },
-  { credits: 200, price: 39 },
-  { credits: 300, price: 49 },
-  { credits: 400, price: 59 },
-  { credits: 500, price: 69 },
-  { credits: 750, price: 95 },
-  { credits: 1000, price: 120 },
-  { credits: 1500, price: 170 },
-  { credits: 2000, price: 220 },
-  { credits: 3000, price: 320 },
-  { credits: 5000, price: 500 },
-  { credits: 10000, price: 900 },
-];
+// Fetch credit tiers from database
+function useCreditTiers() {
+  return useQuery({
+    queryKey: ['credit-tiers-with-stripe'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('credit_tiers')
+        .select('*')
+        .order('credits', { ascending: true });
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+}
 
 const faqs = [
   {
@@ -93,9 +90,13 @@ interface PlanCardProps {
   icon: React.ElementType;
   features: string[];
   bestFor: string[];
-  creditTiers?: { credits: number; price: number }[];
+  creditTiers?: CreditTierWithStripe[];
   isEnterprise?: boolean;
   isAnnual: boolean;
+  onSubscribe?: (priceId: string) => void;
+  isCheckoutLoading?: boolean;
+  isAuthenticated?: boolean;
+  currentPlanType?: string;
 }
 
 function PlanCard({ 
@@ -108,6 +109,10 @@ function PlanCard({
   creditTiers,
   isEnterprise,
   isAnnual,
+  onSubscribe,
+  isCheckoutLoading,
+  isAuthenticated,
+  currentPlanType,
 }: PlanCardProps) {
   const [selectedCredits, setSelectedCredits] = useState(
     creditTiers?.[0]?.credits?.toString() || ''
@@ -121,14 +126,20 @@ function PlanCard({
     ? Math.round(selectedTier.price * 0.8) 
     : selectedTier?.price || basePrice;
 
-  const annualPrice = selectedTier ? selectedTier.price * 12 * 0.8 : basePrice * 12 * 0.8;
+  const isCurrentPlan = currentPlanType === name.toLowerCase();
+
+  const handleSubscribe = () => {
+    if (selectedTier?.priceId && onSubscribe) {
+      onSubscribe(selectedTier.priceId);
+    }
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="glass-card p-6 flex flex-col h-full"
+      className={`glass-card p-6 flex flex-col h-full ${isCurrentPlan ? 'ring-2 ring-primary' : ''}`}
     >
       {/* Plan Header */}
       <div className="mb-4">
@@ -137,6 +148,11 @@ function PlanCard({
             <Icon className="w-5 h-5 text-primary" />
           </div>
           <h3 className="text-xl font-bold">{name}</h3>
+          {isCurrentPlan && (
+            <span className="text-xs px-2 py-1 rounded-full bg-primary/20 text-primary">
+              Current Plan
+            </span>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">{tagline}</p>
       </div>
@@ -190,12 +206,26 @@ function PlanCard({
         >
           Book a demo
         </Link>
+      ) : isAuthenticated ? (
+        <Button
+          onClick={handleSubscribe}
+          disabled={isCheckoutLoading || !selectedTier?.priceId || isCurrentPlan}
+          className="w-full py-3 rounded-lg font-medium gradient-button mb-6"
+        >
+          {isCheckoutLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          ) : isCurrentPlan ? (
+            'Current Plan'
+          ) : (
+            name === 'Pro' ? 'Upgrade to Pro' : 'Upgrade to Business'
+          )}
+        </Button>
       ) : (
         <Link
           to="/sign-up"
           className="block text-center py-3 rounded-lg font-medium gradient-button mb-6"
         >
-          {name === 'Pro' ? 'Upgrade to Pro' : 'Upgrade'}
+          {name === 'Pro' ? 'Get Started' : 'Get Started'}
         </Link>
       )}
 
@@ -234,7 +264,45 @@ function PlanCard({
 
 export default function Pricing() {
   const [isAnnual, setIsAnnual] = useState(false);
-  const { isLoading } = useSubscriptionPlans();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { isLoading: plansLoading } = useSubscriptionPlans();
+  const { data: creditTiersData, isLoading: tiersLoading } = useCreditTiers();
+  const { startCheckout, isLoading: isCheckoutLoading } = useStripeCheckout();
+  const { subscription } = useCredits();
+  const { user } = useAuth();
+
+  // Handle canceled checkout
+  useEffect(() => {
+    if (searchParams.get('canceled') === 'true') {
+      toast({
+        title: 'Checkout Canceled',
+        description: 'Your checkout was canceled. You can try again anytime.',
+      });
+      navigate('/pricing', { replace: true });
+    }
+  }, [searchParams, navigate]);
+
+  // Transform database tiers to component format
+  const proCreditTiers: CreditTierWithStripe[] = creditTiersData
+    ?.filter(t => t.plan_type === 'pro')
+    .map(t => ({
+      credits: t.credits,
+      price: t.price_cents / 100,
+      priceId: t.stripe_price_id,
+    })) || [];
+
+  const businessCreditTiers: CreditTierWithStripe[] = creditTiersData
+    ?.filter(t => t.plan_type === 'business')
+    .map(t => ({
+      credits: t.credits,
+      price: t.price_cents / 100,
+      priceId: t.stripe_price_id,
+    })) || [];
+
+  const handleSubscribe = (priceId: string) => {
+    startCheckout(priceId);
+  };
 
   const plans = [
     {
@@ -367,6 +435,10 @@ export default function Pricing() {
                   {...plan}
                   isAnnual={isAnnual}
                   isEnterprise={plan.isEnterprise}
+                  onSubscribe={handleSubscribe}
+                  isCheckoutLoading={isCheckoutLoading}
+                  isAuthenticated={!!user}
+                  currentPlanType={subscription?.plan_type}
                 />
               </motion.div>
             ))}
