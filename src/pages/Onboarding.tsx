@@ -74,14 +74,46 @@ const SHOWCASE_MESSAGES = [
 ];
 
 const TEMPLATE_CARDS = [
-  { title: 'SaaS Dashboard', description: 'Modern admin panel with analytics' },
-  { title: 'E-commerce Store', description: 'Full-featured online shop' },
-  { title: 'Portfolio Site', description: 'Showcase your creative work' },
-  { title: 'Landing Page', description: 'High-converting marketing pages' },
-  { title: 'Blog Platform', description: 'Content-first publishing' },
-  { title: 'Mobile App UI', description: 'Responsive app interfaces' },
-  { title: 'Documentation', description: 'Developer-friendly docs' },
-  { title: 'Social Network', description: 'Community-driven platform' }
+  { 
+    title: 'SaaS Dashboard', 
+    description: 'Modern admin panel with analytics',
+    image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'E-commerce Store', 
+    description: 'Full-featured online shop',
+    image: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'Portfolio Site', 
+    description: 'Showcase your creative work',
+    image: 'https://images.unsplash.com/photo-1545665277-5937489579f2?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'Landing Page', 
+    description: 'High-converting marketing pages',
+    image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'Blog Platform', 
+    description: 'Content-first publishing',
+    image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'Mobile App UI', 
+    description: 'Responsive app interfaces',
+    image: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'Documentation', 
+    description: 'Developer-friendly docs',
+    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&h=400&fit=crop'
+  },
+  { 
+    title: 'Social Network', 
+    description: 'Community-driven platform',
+    image: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=400&fit=crop'
+  }
 ];
 
 export default function Onboarding() {
@@ -331,19 +363,33 @@ export default function Onboarding() {
 
         {/* Card Swap */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div style={{ height: '500px', width: '100%', position: 'relative' }}>
+          <div style={{ height: '600px', width: '100%', position: 'relative' }}>
             <CardSwap
-              cardDistance={70}
-              verticalDistance={70}
+              cardDistance={80}
+              verticalDistance={80}
               delay={4000}
-              pauseOnHover={false}
-              width={320}
-              height={200}
+              pauseOnHover={true}
+              width={400}
+              height={280}
             >
               {TEMPLATE_CARDS.map((template, i) => (
-                <Card key={i} className="p-6 flex flex-col justify-end bg-gradient-to-br from-zinc-900 to-zinc-800">
-                  <h3 className="text-lg font-semibold text-white mb-1">{template.title}</h3>
-                  <p className="text-sm text-zinc-400">{template.description}</p>
+                <Card 
+                  key={i} 
+                  className="overflow-hidden flex flex-col bg-zinc-900/95 backdrop-blur-sm border-zinc-700/50"
+                >
+                  {/* Image */}
+                  <div className="h-[180px] w-full overflow-hidden">
+                    <img 
+                      src={template.image} 
+                      alt={template.title}
+                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                    />
+                  </div>
+                  {/* Content */}
+                  <div className="p-4 flex flex-col justify-end flex-1 bg-gradient-to-t from-zinc-900 to-zinc-900/80">
+                    <h3 className="text-lg font-semibold text-white mb-1">{template.title}</h3>
+                    <p className="text-sm text-zinc-400">{template.description}</p>
+                  </div>
                 </Card>
               ))}
             </CardSwap>
