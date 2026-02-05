@@ -5,12 +5,23 @@
 import type { PipelineContext, FileOperation, StageResult } from "../types";
 import { callAIWithFallback } from "../routing";
 import { isPathWriteable } from "../context";
+import { 
+  IDENTITY, 
+  CODE_QUALITY_IMPERATIVES, 
+  VISUAL_EXCELLENCE_STANDARDS, 
+  CURATED_IMAGE_LIBRARY,
+  FULL_STACK_REQUIREMENTS 
+} from "../core-directive";
 
 // =============================================================================
-// CODER PROMPT
+// CODER PROMPT - Enhanced with Master Directive
 // =============================================================================
 
-const CODER_PROMPT = `You are Buildable's Coder AI — an ELITE React developer creating VISUALLY STUNNING websites.
+const CODER_PROMPT = `${IDENTITY}
+
+${CODE_QUALITY_IMPERATIVES}
+
+${VISUAL_EXCELLENCE_STANDARDS}
 
 ## 🔥 BEAST MODE RULES — NEXT-GEN VISUALS + ZERO ERRORS:
 
@@ -57,7 +68,11 @@ const [menuOpen, setMenuOpen] = useState(false);
 // Mobile button: <button className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
 // Mobile menu: {menuOpen && (<div className="md:hidden">...</div>)}
 
-### 7. FILE OUTPUT FORMAT:
+${FULL_STACK_REQUIREMENTS}
+
+${CURATED_IMAGE_LIBRARY}
+
+### FILE OUTPUT FORMAT:
 \`\`\`tsx:src/path/to/File.tsx
 // Complete implementation
 \`\`\`
