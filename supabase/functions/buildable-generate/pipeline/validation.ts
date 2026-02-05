@@ -23,6 +23,31 @@ interface ErrorPattern {
 }
 
 const ERROR_PATTERNS: ErrorPattern[] = [
+  // SYNTAX errors - Incomplete ternary expressions (CRITICAL)
+  {
+    pattern: /\{\s*\w+\s*\?\s*:\s*\}/g,
+    category: "SYNTAX",
+    message: "Incomplete ternary expression - missing true AND false branches: {condition ? : }",
+    fix: "Add content for BOTH branches: {condition ? <TrueContent /> : <FalseContent />}",
+    severity: "error",
+    autoFixable: false,
+  },
+  {
+    pattern: /\{\s*\w+\s*\?\s*<[^>]+\/?>\s*:\s*\}/g,
+    category: "SYNTAX",
+    message: "Incomplete ternary - missing false branch after colon",
+    fix: "Add content after the colon: {condition ? <TrueContent /> : <FalseContent />}",
+    severity: "error",
+    autoFixable: false,
+  },
+  {
+    pattern: /\{\s*\w+\s*\?\s*:\s*<[^>]+\/?>\s*\}/g,
+    category: "SYNTAX",
+    message: "Incomplete ternary - missing true branch before colon",
+    fix: "Add content before the colon: {condition ? <TrueContent /> : <FalseContent />}",
+    severity: "error",
+    autoFixable: false,
+  },
   // STRUCTURE errors (placeholder patterns)
   {
     pattern: /\/\/\s*\.\.\./gm,
@@ -54,6 +79,15 @@ const ERROR_PATTERNS: ErrorPattern[] = [
     message: "TODO comment found - incomplete implementation",
     fix: "Complete the TODO item or remove the comment",
     severity: "warning",
+    autoFixable: false,
+  },
+  // Empty/null exports
+  {
+    pattern: /export\s+default\s+null\s*;?/gm,
+    category: "STRUCTURE",
+    message: "Component exports null - incomplete implementation",
+    fix: "Implement the component with proper JSX return",
+    severity: "error",
     autoFixable: false,
   },
 ];
