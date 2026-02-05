@@ -92,4 +92,23 @@ export async function saveOnboardingAnswers(
     .eq('id', user.id);
 
   if (error) throw error;
+
+  // Send welcome email when onboarding is completed (not skipped)
+  if (completed) {
+    try {
+      const displayName = answers.q1 || user.email?.split('@')[0] || 'there';
+      
+      await supabase.functions.invoke('send-welcome-email', {
+        body: {
+          email: user.email,
+          displayName
+        }
+      });
+      
+      console.log('Welcome email sent successfully');
+    } catch (emailError) {
+      // Don't block onboarding completion if email fails
+      console.error('Failed to send welcome email:', emailError);
+    }
+  }
 }
