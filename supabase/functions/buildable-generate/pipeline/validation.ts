@@ -1,5 +1,5 @@
 // =============================================================================
-// VALIDATION - Code validation, error classification, and quality scoring
+// VALIDATION - Enhanced Code Validation with Polish Checks
 // =============================================================================
 
 import type { 
@@ -149,7 +149,6 @@ function analyzeImports(content: string): ImportAnalysis {
   const usedHooks: string[] = [];
   const usedIcons: string[] = [];
 
-  // Check for hook usage
   for (const hook of REACT_HOOKS) {
     const hookRegex = new RegExp(`\\b${hook}\\s*\\(`, "g");
     if (hookRegex.test(content)) {
@@ -157,7 +156,6 @@ function analyzeImports(content: string): ImportAnalysis {
     }
   }
 
-  // Check for React import with hooks
   const reactImportMatch = content.match(/import\s+.*\{([^}]*)\}.*from\s+['"]react['"]/);
   const importedHooks = reactImportMatch 
     ? reactImportMatch[1].split(",").map(h => h.trim())
@@ -165,7 +163,6 @@ function analyzeImports(content: string): ImportAnalysis {
 
   const missingHookImports = usedHooks.filter(h => !importedHooks.includes(h));
 
-  // Check for icon usage
   for (const icon of COMMON_ICONS) {
     const iconRegex = new RegExp(`<${icon}[\\s/>]`, "g");
     if (iconRegex.test(content)) {
@@ -173,10 +170,7 @@ function analyzeImports(content: string): ImportAnalysis {
     }
   }
 
-  // Check for lucide-react import
   const hasIconImport = /import\s+.*from\s+['"]lucide-react['"]/.test(content);
-
-  // Check for router usage
   const usesRouter = /\b(Link|useNavigate|useParams|useLocation|useSearchParams)\b/.test(content);
   const hasRouterImport = /import\s+.*from\s+['"]react-router-dom['"]/.test(content);
 
@@ -192,20 +186,186 @@ function analyzeImports(content: string): ImportAnalysis {
 }
 
 // =============================================================================
+// POLISH VALIDATION (NEW!)
+// =============================================================================
+
+interface PolishAnalysis {
+  hasHeroImage: boolean;
+  hasGradientOverlay: boolean;
+  hasGradientText: boolean;
+  hasHoverEffects: boolean;
+  hasUnsplashImages: boolean;
+  imageCount: number;
+  hasMobileMenu: boolean;
+  hasFooter: boolean;
+  hasCTA: boolean;
+  score: number;
+}
+
+function analyzePolish(files: FileOperation[]): PolishAnalysis {
+  let hasHeroImage = false;
+  let hasGradientOverlay = false;
+  let hasGradientText = false;
+  let hasHoverEffects = false;
+  let hasUnsplashImages = false;
+  let imageCount = 0;
+  let hasMobileMenu = false;
+  let hasFooter = false;
+  let hasCTA = false;
+
+  for (const file of files) {
+    const content = file.content;
+    const path = file.path.toLowerCase();
+
+    // Check for Unsplash images
+    const unsplashMatches = content.match(/images\.unsplash\.com/g);
+    if (unsplashMatches) {
+      hasUnsplashImages = true;
+      imageCount += unsplashMatches.length;
+    }
+
+    // Check Hero component
+    if (path.includes("hero")) {
+      hasHeroImage = /img\s+src=/.test(content) && /unsplash/.test(content);
+      hasGradientOverlay = /bg-gradient-to/.test(content) && /from-black/.test(content);
+      hasGradientText = /bg-gradient-to.*bg-clip-text.*text-transparent/.test(content);
+    }
+
+    // Check for hover effects anywhere
+    if (/hover:/.test(content)) {
+      hasHoverEffects = true;
+    }
+
+    // Check Navbar for mobile menu
+    if (path.includes("navbar") || path.includes("nav")) {
+      hasMobileMenu = /menuOpen|isOpen|mobileMenu/.test(content) && /<Menu|<X|hamburger/i.test(content);
+    }
+
+    // Check for Footer
+    if (path.includes("footer")) {
+      hasFooter = true;
+    }
+
+    // Check for CTA
+    if (path.includes("cta")) {
+      hasCTA = true;
+    }
+  }
+
+  // Calculate polish score (0-100)
+  let score = 0;
+  if (hasHeroImage) score += 15;
+  if (hasGradientOverlay) score += 10;
+  if (hasGradientText) score += 10;
+  if (hasHoverEffects) score += 15;
+  if (hasUnsplashImages) score += 10;
+  if (imageCount >= 4) score += 10;
+  if (imageCount >= 8) score += 10;
+  if (hasMobileMenu) score += 10;
+  if (hasFooter) score += 5;
+  if (hasCTA) score += 5;
+
+  return {
+    hasHeroImage,
+    hasGradientOverlay,
+    hasGradientText,
+    hasHoverEffects,
+    hasUnsplashImages,
+    imageCount,
+    hasMobileMenu,
+    hasFooter,
+    hasCTA,
+    score,
+  };
+}
+
+// =============================================================================
+// FILE COUNT VALIDATION (NEW!)
+// =============================================================================
+
+function validateFileCount(files: FileOperation[], isNewProject: boolean): ValidationError[] {
+  const warnings: ValidationError[] = [];
+  
+  if (isNewProject && files.length < 8) {
+    warnings.push({
+      category: "STRUCTURE",
+      file: "project",
+      message: `Only ${files.length} files generated - new projects should have 8-12 files minimum`,
+      fix: "Add Gallery, Testimonials, CTA, and additional sections",
+      severity: "warning",
+      autoFixable: false,
+    });
+  }
+
+  // Check for essential files
+  const paths = files.map(f => f.path.toLowerCase());
+  
+  if (isNewProject) {
+    if (!paths.some(p => p.includes("navbar"))) {
+      warnings.push({
+        category: "STRUCTURE",
+        file: "project",
+        message: "Missing Navbar component",
+        fix: "Add src/components/layout/Navbar.tsx",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (!paths.some(p => p.includes("hero"))) {
+      warnings.push({
+        category: "STRUCTURE",
+        file: "project",
+        message: "Missing Hero component",
+        fix: "Add src/components/Hero.tsx",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (!paths.some(p => p.includes("footer"))) {
+      warnings.push({
+        category: "STRUCTURE",
+        file: "project",
+        message: "Missing Footer component",
+        fix: "Add src/components/layout/Footer.tsx",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (!paths.some(p => p.includes("cta"))) {
+      warnings.push({
+        category: "STRUCTURE",
+        file: "project",
+        message: "Missing CTA component",
+        fix: "Add src/components/CTA.tsx",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+// =============================================================================
 // LOCAL VALIDATOR
 // =============================================================================
 
-export function validateCodeLocally(files: FileOperation[]): ValidationResult {
+export function validateCodeLocally(files: FileOperation[], isNewProject: boolean = true): ValidationResult {
   const criticalErrors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
   let totalScore = 0;
   let fileCount = 0;
 
+  // File count validation
+  const fileCountWarnings = validateFileCount(files, isNewProject);
+  warnings.push(...fileCountWarnings);
+
   for (const file of files) {
     if (!file.path.endsWith(".tsx") && !file.path.endsWith(".ts") && !file.path.endsWith(".jsx") && !file.path.endsWith(".js")) {
-      // Only validate code files in detail
       if (file.path.endsWith(".css")) {
-        // Basic CSS validation
         const braces = checkBalance(file.content, "{", "}");
         if (!braces.balanced) {
           criticalErrors.push({
@@ -246,7 +406,6 @@ export function validateCodeLocally(files: FileOperation[]): ValidationResult {
           fileScore -= 0.05;
         }
       }
-      // Reset lastIndex for global regexes
       pattern.pattern.lastIndex = 0;
     }
 
@@ -278,9 +437,8 @@ export function validateCodeLocally(files: FileOperation[]): ValidationResult {
       fileScore -= 0.3;
     }
 
-    // Check bracket balance (for JSX)
+    // Check bracket balance for TSX
     const brackets = checkBalance(content, "<", ">");
-    // Only check for severe imbalance in TSX files
     if (path.endsWith(".tsx") && Math.abs(brackets.diff) > 5) {
       warnings.push({
         category: "SYNTAX",
@@ -348,9 +506,69 @@ export function validateCodeLocally(files: FileOperation[]): ValidationResult {
     totalScore += Math.max(0, fileScore);
   }
 
+  // Polish analysis for new projects
+  const polish = analyzePolish(files);
+  
+  if (isNewProject) {
+    if (!polish.hasHeroImage) {
+      warnings.push({
+        category: "POLISH",
+        file: "Hero.tsx",
+        message: "Hero section missing background image",
+        fix: "Add Unsplash hero background image",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (!polish.hasGradientText) {
+      warnings.push({
+        category: "POLISH",
+        file: "project",
+        message: "No gradient text effects detected",
+        fix: "Add gradient text to headings: bg-gradient-to-r ... bg-clip-text text-transparent",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (!polish.hasHoverEffects) {
+      warnings.push({
+        category: "POLISH",
+        file: "project",
+        message: "No hover effects detected",
+        fix: "Add hover: classes to interactive elements",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (polish.imageCount < 4) {
+      warnings.push({
+        category: "POLISH",
+        file: "project",
+        message: `Only ${polish.imageCount} images detected - projects should have 6-12 images`,
+        fix: "Add more Unsplash images to Gallery and sections",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+    
+    if (!polish.hasMobileMenu) {
+      warnings.push({
+        category: "POLISH",
+        file: "Navbar.tsx",
+        message: "Mobile menu not detected",
+        fix: "Add hamburger menu for mobile devices",
+        severity: "warning",
+        autoFixable: false,
+      });
+    }
+  }
+
   const averageScore = fileCount > 0 ? totalScore / fileCount : 1.0;
 
-  // Generate suggestions based on errors
+  // Generate suggestions
   const suggestions: string[] = [];
   
   const importErrors = criticalErrors.filter(e => e.category === "IMPORT");
@@ -365,12 +583,18 @@ export function validateCodeLocally(files: FileOperation[]): ValidationResult {
 
   const structureWarnings = warnings.filter(e => e.category === "STRUCTURE");
   if (structureWarnings.length > 0) {
-    suggestions.push("Complete any placeholder or TODO items");
+    suggestions.push("Complete any missing components or sections");
+  }
+
+  const polishWarnings = warnings.filter(e => e.category === "POLISH");
+  if (polishWarnings.length > 0) {
+    suggestions.push("Enhance visual polish with gradients, hover effects, and more images");
   }
 
   return {
     valid: criticalErrors.length === 0,
     score: averageScore,
+    polishScore: polish.score,
     criticalErrors,
     warnings,
     suggestions,
@@ -392,15 +616,6 @@ export interface ClassifiedError {
 export function classifyErrors(errors: ValidationError[]): ClassifiedError[] {
   const classified: ClassifiedError[] = [];
 
-  // Group errors by file
-  const errorsByFile = new Map<string, ValidationError[]>();
-  for (const error of errors) {
-    const existing = errorsByFile.get(error.file) || [];
-    existing.push(error);
-    errorsByFile.set(error.file, existing);
-  }
-
-  // Classify each error
   for (const error of errors) {
     let rootCause = error.message;
     let repairStrategy = error.fix;
@@ -408,7 +623,7 @@ export function classifyErrors(errors: ValidationError[]): ClassifiedError[] {
 
     switch (error.category) {
       case "SYNTAX":
-        priority = 1; // Highest priority
+        priority = 1;
         if (error.message.includes("brace")) {
           rootCause = "Unbalanced braces causing parse failure";
           repairStrategy = "Count and match all opening/closing braces";
@@ -452,8 +667,14 @@ export function classifyErrors(errors: ValidationError[]): ClassifiedError[] {
         }
         break;
 
-      case "TYPE":
+      case "POLISH":
         priority = 4;
+        rootCause = "Missing visual polish elements";
+        repairStrategy = "Add gradients, hover effects, and images";
+        break;
+
+      case "TYPE":
+        priority = 5;
         rootCause = "TypeScript type mismatch or missing types";
         repairStrategy = "Add or fix type annotations";
         break;
@@ -465,7 +686,7 @@ export function classifyErrors(errors: ValidationError[]): ClassifiedError[] {
         break;
 
       case "DEPENDENCY":
-        priority = 5;
+        priority = 6;
         rootCause = "Missing npm package dependency";
         repairStrategy = "Install required package or remove import";
         break;
@@ -480,7 +701,6 @@ export function classifyErrors(errors: ValidationError[]): ClassifiedError[] {
     });
   }
 
-  // Sort by priority
   return classified.sort((a, b) => a.priority - b.priority);
 }
 
@@ -491,12 +711,44 @@ export function classifyErrors(errors: ValidationError[]): ClassifiedError[] {
 export function calculateQualityScore(result: ValidationResult): number {
   let score = 1.0;
 
-  // Deduct for critical errors
   score -= result.criticalErrors.length * 0.15;
-
-  // Deduct for warnings (less severe)
   score -= result.warnings.length * 0.03;
 
-  // Ensure score is in valid range
   return Math.max(0, Math.min(1, score));
+}
+
+// =============================================================================
+// AUTO-FIX HELPERS
+// =============================================================================
+
+export function canAutoFix(category: ErrorCategory): boolean {
+  return category === "IMPORT";
+}
+
+export function generateAutoFix(error: ValidationError, content: string): string | null {
+  if (error.category !== "IMPORT") return null;
+  
+  // Auto-fix missing React hook imports
+  if (error.message.includes("hook")) {
+    const hookMatch = error.message.match(/Missing React hook imports: (.+)/);
+    if (hookMatch) {
+      const hooks = hookMatch[1].split(", ");
+      const existingImport = content.match(/import\s+\{([^}]*)\}\s+from\s+['"]react['"]/);
+      
+      if (existingImport) {
+        const existingHooks = existingImport[1].split(",").map(h => h.trim());
+        const allHooks = [...new Set([...existingHooks, ...hooks])].join(", ");
+        return content.replace(existingImport[0], `import { ${allHooks} } from 'react'`);
+      } else {
+        return `import { ${hooks.join(", ")} } from 'react';\n${content}`;
+      }
+    }
+  }
+  
+  return null;
+}
+
+export function classifyError(category: string): ErrorCategory {
+  const validCategories: ErrorCategory[] = ["SYNTAX", "IMPORT", "TYPE", "RUNTIME", "STRUCTURE", "DEPENDENCY", "REACT", "POLISH"];
+  return validCategories.includes(category as ErrorCategory) ? (category as ErrorCategory) : "STRUCTURE";
 }
