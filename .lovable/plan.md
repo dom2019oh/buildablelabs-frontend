@@ -1,308 +1,182 @@
 
-# Stripe Integration with Credit System
 
-## Summary
+# Plan: Enhance Buildable AI Core Directive for In-Depth Full-Stack Generation
 
-This plan implements full Stripe payment integration for the credit-based subscription system with:
-1. **26 Stripe Products** - 13 Pro credit tiers + 13 Business credit tiers (monthly recurring)
-2. **Stripe Webhook Edge Function** - Handles subscription lifecycle events
-3. **Enhanced RLS Policies** - 100% bulletproof credit protection
-4. **Billing UI Upgrade** - Replace placeholder with functional subscription management
+## Overview
 
----
+You want to enhance the Buildable AI system to generate more in-depth, visually stunning web applications — similar to how Lovable operates. Even when a user asks for a "basic landing page," the system should generate production-ready, beautifully designed full-stack applications with no compromises.
 
-## Part 1: Create Stripe Products
+The current system already has a solid foundation:
+- **8-stage deterministic pipeline** (Intent → Plan → Generate → Validate → Repair)
+- **Multi-model coordination** (Grok for coding, Gemini for planning, OpenAI for validation)
+- **Core directive with code quality rules** and visual standards
 
-### Pro Plan Credit Tiers (13 products)
-Each product is a monthly recurring subscription with professional descriptions:
-
-| Credits | Price | Product Name | Description |
-|---------|-------|--------------|-------------|
-| 50 | $15/mo | Buildable Pro 50 | Perfect for casual builders. 50 AI credits monthly for quick edits and simple projects. |
-| 100 | $20/mo | Buildable Pro 100 | Ideal for hobbyists. 100 AI credits monthly for regular website maintenance. |
-| 200 | $25/mo | Buildable Pro 200 | Great for active creators. 200 AI credits monthly for building multiple pages. |
-| 300 | $35/mo | Buildable Pro 300 | Solid choice for freelancers. 300 AI credits monthly for client projects. |
-| 400 | $45/mo | Buildable Pro 400 | Enhanced productivity. 400 AI credits monthly for frequent builders. |
-| 500 | $55/mo | Buildable Pro 500 | Power user tier. 500 AI credits monthly for serious development. |
-| 750 | $75/mo | Buildable Pro 750 | Professional builder. 750 AI credits monthly for high-output workflows. |
-| 1000 | $95/mo | Buildable Pro 1K | Advanced creator. 1,000 AI credits monthly for intensive projects. |
-| 1500 | $135/mo | Buildable Pro 1.5K | Heavy usage. 1,500 AI credits monthly for rapid prototyping. |
-| 2000 | $175/mo | Buildable Pro 2K | Expert level. 2,000 AI credits monthly for full-scale development. |
-| 3000 | $250/mo | Buildable Pro 3K | Studio grade. 3,000 AI credits monthly for complex applications. |
-| 5000 | $400/mo | Buildable Pro 5K | Enterprise ready. 5,000 AI credits monthly for large projects. |
-| 10000 | $700/mo | Buildable Pro 10K | Ultimate builder. 10,000 AI credits monthly for unlimited creativity. |
-
-### Business Plan Credit Tiers (12 products)
-| Credits | Price | Product Name | Description |
-|---------|-------|--------------|-------------|
-| 100 | $29/mo | Buildable Business 100 | Team starter. 100 AI credits monthly with team collaboration. |
-| 200 | $39/mo | Buildable Business 200 | Small team. 200 AI credits monthly for growing studios. |
-| 300 | $49/mo | Buildable Business 300 | Active team. 300 AI credits monthly for regular workflows. |
-| 400 | $59/mo | Buildable Business 400 | Productive team. 400 AI credits monthly for consistent output. |
-| 500 | $69/mo | Buildable Business 500 | Power team. 500 AI credits monthly for agency work. |
-| 750 | $95/mo | Buildable Business 750 | Studio tier. 750 AI credits monthly for professional teams. |
-| 1000 | $120/mo | Buildable Business 1K | Agency grade. 1,000 AI credits monthly for client work. |
-| 1500 | $170/mo | Buildable Business 1.5K | High volume. 1,500 AI credits monthly for rapid delivery. |
-| 2000 | $220/mo | Buildable Business 2K | Enterprise team. 2,000 AI credits monthly for scale. |
-| 3000 | $320/mo | Buildable Business 3K | Large studio. 3,000 AI credits monthly for complex projects. |
-| 5000 | $500/mo | Buildable Business 5K | Enterprise scale. 5,000 AI credits monthly for large teams. |
-| 10000 | $900/mo | Buildable Business 10K | Ultimate team. 10,000 AI credits monthly for unlimited output. |
+This plan will **supercharge** the core directive and generation prompts to ensure every output is visually stunning, complete, and production-ready.
 
 ---
 
-## Part 2: Database Schema Updates
+## Phase 1: Enhance Core Directive (Lovable-Inspired)
 
-### Add Stripe Product IDs to credit_tiers table
-```sql
-ALTER TABLE public.credit_tiers 
-ADD COLUMN stripe_product_id TEXT,
-ADD COLUMN stripe_price_id TEXT,
-ADD COLUMN stripe_annual_price_id TEXT;
-```
+**File:** `supabase/functions/buildable-generate/pipeline/core-directive.ts`
 
-### Add stripe_price_id to user_subscriptions
-```sql
-ALTER TABLE public.user_subscriptions 
-ADD COLUMN stripe_price_id TEXT;
-```
+### New Capabilities:
+1. **Full-Stack Mindset Directive**
+   - Generate complete applications, not basic pages
+   - Always include navigation, multiple sections, animations, and footer
+   - Even "simple" requests get the full treatment
 
----
+2. **Visual Excellence Standards** (Enhanced)
+   - Every project includes 6-12 Unsplash images automatically
+   - Hero sections with gradient overlays are mandatory
+   - Feature sections use icon cards with hover states
+   - Gallery sections with real images, not placeholders
+   - Testimonials with professional avatars
+   - Call-to-action sections with gradient backgrounds
 
-## Part 3: RLS Policy Audit & Fixes
+3. **Component Completeness Rules**
+   - Every Navbar must have: logo, links, mobile hamburger menu, CTA button
+   - Every Hero must have: full-bleed background, gradient overlay, headline, subheadline, 2 CTA buttons
+   - Every Feature section: 4-6 feature cards with icons
+   - Every Footer: multi-column links, social icons, copyright
 
-Current RLS policies need strengthening to achieve 100% protection:
+4. **Animation & Polish Requirements**
+   - Hover effects on all interactive elements
+   - Smooth transitions (transition-all duration-300)
+   - Gradient text for headings
+   - Backdrop blur on navigation
+   - Shadow effects on buttons
 
-### user_credits table
-Current issues:
-- Users can INSERT their own credits (potential abuse vector)
-- No UPDATE policy via RLS (only via RPC functions - good)
-
-**Fix**: Remove INSERT policy, only allow via RPC/triggers
-```sql
--- Drop existing INSERT policy
-DROP POLICY IF EXISTS "Users can insert their own credits" ON public.user_credits;
-
--- All credit modifications MUST go through RPC functions with SECURITY DEFINER
-```
-
-### credit_transactions table
-Current: Users can only SELECT their own transactions - GOOD
-Verify: No INSERT/UPDATE/DELETE by users - CORRECT
-
-### user_subscriptions table
-Current issues:
-- Users can INSERT their own subscription (should only be via webhook/trigger)
-- Users can UPDATE their own subscription (dangerous - could change plan_type)
-
-**Fix**: 
-```sql
--- Drop dangerous policies
-DROP POLICY IF EXISTS "Users can insert their own subscription" ON public.user_subscriptions;
-DROP POLICY IF EXISTS "Users can update their own subscription" ON public.user_subscriptions;
-
--- Only allow SELECT
--- All modifications via Stripe webhook with service role
-```
-
-### Summary of RLS Enforcement
-| Table | SELECT | INSERT | UPDATE | DELETE |
-|-------|--------|--------|--------|--------|
-| user_credits | Own only | RPC only | RPC only | Never |
-| credit_transactions | Own only | RPC only | Never | Never |
-| user_subscriptions | Own only | Webhook only | Webhook only | Never |
-| credit_tiers | All | Admin only | Admin only | Admin only |
-| credit_action_costs | Active only | Admin only | Admin only | Admin only |
+5. **Persona Updates** (Jarvis-Style)
+   - Decisive language: "I'll create" not "I could create"
+   - Confident: "Done!" not "I hope this works"
+   - Never say: "it seems," "perhaps," "you might want to," "I'm sorry but"
+   - Always suggest 2-3 next steps
 
 ---
 
-## Part 4: Stripe Webhook Edge Function
+## Phase 2: Enhance Generation Prompts
 
-Create `supabase/functions/stripe-webhook/index.ts`:
+**File:** `supabase/functions/buildable-generate/pipeline/stages/generate.ts`
 
-### Webhook Events to Handle:
-1. `checkout.session.completed` - New subscription
-2. `customer.subscription.updated` - Plan changes
-3. `customer.subscription.deleted` - Cancellation
-4. `invoice.paid` - Monthly renewal (add credits)
-5. `invoice.payment_failed` - Payment failure
+### Updates to CODER_SYSTEM_PROMPT:
+1. **Minimum File Requirements**
+   - New projects generate 8-12 files minimum (currently 6-10)
+   - Always include: Gallery, Testimonials, About section
 
-### Webhook Logic:
-```typescript
-// Event: checkout.session.completed
-async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
-  const userId = session.client_reference_id;
-  const subscriptionId = session.subscription;
-  const customerId = session.customer;
-  
-  // Get subscription details from Stripe
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  const priceId = subscription.items.data[0].price.id;
-  
-  // Look up credit tier from price ID
-  const tier = await getCreditTierByPriceId(priceId);
-  
-  // Update user_subscriptions (using service role)
-  await supabaseAdmin.from('user_subscriptions').upsert({
-    user_id: userId,
-    plan_type: tier.plan_type,
-    selected_credits: tier.credits,
-    price_cents: tier.price_cents,
-    stripe_subscription_id: subscriptionId,
-    stripe_customer_id: customerId,
-    stripe_price_id: priceId,
-    is_annual: subscription.items.data[0].price.recurring.interval === 'year',
-    status: 'active',
-    billing_period_start: new Date(subscription.current_period_start * 1000),
-    billing_period_end: new Date(subscription.current_period_end * 1000),
-  });
-  
-  // Add monthly credits
-  await supabaseAdmin.rpc('add_credits', {
-    p_user_id: userId,
-    p_amount: tier.credits,
-    p_transaction_type: 'subscription',
-    p_description: `${tier.plan_type} subscription - ${tier.credits} credits`,
-  });
-}
-```
+2. **Enhanced Visual Patterns**
+   - Add gradient text utility patterns
+   - Add glass-morphism card patterns  
+   - Add animated hover card patterns
+   - Add testimonial card patterns with avatars
+
+3. **Image Auto-Selection**
+   - Detect niche from prompt automatically
+   - Inject 4-8 relevant Unsplash images
+   - For unknown niches, use curated "professional" image set
+
+4. **Section Templates**
+   - Add pre-defined section patterns for:
+     - Hero (3 variants)
+     - Features (grid, list, alternating)
+     - Gallery (masonry, slider, grid)
+     - Testimonials (carousel, cards, quotes)
+     - Pricing (3-column, toggle)
+     - CTA (gradient, image, minimal)
 
 ---
 
-## Part 5: Checkout Session Edge Function
+## Phase 3: Enhance Planning Stage
 
-Create `supabase/functions/create-checkout/index.ts`:
+**File:** `supabase/functions/buildable-generate/pipeline/stages/plan.ts`
 
-```typescript
-// Creates Stripe Checkout session for subscription
-export async function createCheckout(req: Request) {
-  const { priceId, userId, isAnnual } = await req.json();
-  
-  // Verify user is authenticated
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || user.id !== userId) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-  
-  // Get or create Stripe customer
-  let customerId = await getStripeCustomerId(userId);
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { userId },
-    });
-    customerId = customer.id;
-  }
-  
-  // Create checkout session
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    client_reference_id: userId,
-    payment_method_types: ['card'],
-    mode: 'subscription',
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${origin}/dashboard/billing?success=true`,
-    cancel_url: `${origin}/pricing?canceled=true`,
-    subscription_data: {
-      metadata: { userId },
-    },
-  });
-  
-  return new Response(JSON.stringify({ url: session.url }));
-}
-```
+### Updates to ARCHITECT_SYSTEM_PROMPT:
+1. **Force Rich Architecture**
+   - Even "simple" requests get full-featured plans
+   - Minimum 6 components for any project
+   - Always include gallery and testimonials sections
+
+2. **Expanded Image Library**
+   - 50+ curated images across 15 niches
+   - Auto-detect industry from keywords
+   - Fallback to professional/tech images
+
+3. **Enhanced Section Planning**
+   - Plans include specific sections with details
+   - Each component gets feature requirements
+   - Image assignments per section
 
 ---
 
-## Part 6: Billing Portal Edge Function
+## Phase 4: Strengthen Validation
 
-Create `supabase/functions/billing-portal/index.ts`:
+**File:** `supabase/functions/buildable-generate/pipeline/validation.ts`
 
-```typescript
-// Opens Stripe Customer Portal for managing subscription
-export async function createPortalSession(req: Request) {
-  const { userId } = await req.json();
-  
-  // Get Stripe customer ID
-  const { data: sub } = await supabaseAdmin
-    .from('user_subscriptions')
-    .select('stripe_customer_id')
-    .eq('user_id', userId)
-    .single();
-  
-  if (!sub?.stripe_customer_id) {
-    return new Response(JSON.stringify({ error: 'No subscription found' }), { status: 404 });
-  }
-  
-  const session = await stripe.billingPortal.sessions.create({
-    customer: sub.stripe_customer_id,
-    return_url: `${origin}/dashboard/billing`,
-  });
-  
-  return new Response(JSON.stringify({ url: session.url }));
-}
-```
+### New Validation Rules:
+1. **Image Presence Check**
+   - Flag if Hero has no background image
+   - Warn if no Unsplash images detected
+
+2. **Section Completeness Check**
+   - Warn if under 5 components
+   - Warn if no footer detected
+   - Warn if no CTA section
+
+3. **Polish Check**
+   - Warn if no hover effects detected
+   - Warn if no gradient usage detected
 
 ---
 
-## Part 7: Updated Billing UI
+## Phase 5: Update Backend Documentation
 
-Replace `src/components/dashboard/BillingView.tsx` with:
+**File:** `docs/backend-repo/BUILDABLE_AI_README.md`
 
-- Current plan display (from user_subscriptions)
-- Credit balance breakdown (monthly/bonus/rollover/topup)
-- "Manage Subscription" button (opens Stripe Portal)
-- "Upgrade Plan" button (opens pricing page)
-- Credit usage chart (from credit_transactions)
-- Next billing date and renewal info
+Update to reflect:
+- New visual excellence standards
+- Enhanced file generation requirements
+- Updated model routing (current models)
+- New validation rules
 
----
+**File:** `docs/backend-repo/src/services/ai/pipeline/stages/generate.ts`
 
-## Part 8: Pricing Page Updates
-
-Update `src/pages/Pricing.tsx`:
-
-- Replace static `proCreditTiers` and `businessCreditTiers` with database data
-- Add "Subscribe" button that calls `create-checkout` edge function
-- Handle success/cancel query params
-- Show current plan badge if user already subscribed
+Sync with the edge function version for consistency.
 
 ---
 
-## Technical Implementation
+## Technical Changes Summary
 
-### Files to Create:
-| File | Purpose |
-|------|---------|
-| `supabase/functions/stripe-webhook/index.ts` | Handle Stripe events |
-| `supabase/functions/create-checkout/index.ts` | Create checkout sessions |
-| `supabase/functions/billing-portal/index.ts` | Manage subscription portal |
-| `src/hooks/useStripeCheckout.ts` | React hook for checkout flow |
-
-### Files to Modify:
 | File | Changes |
 |------|---------|
-| `src/components/dashboard/BillingView.tsx` | Full UI implementation |
-| `src/pages/Pricing.tsx` | Stripe checkout integration |
-| `src/hooks/useCredits.ts` | Add subscription status helpers |
-
-### Database Migrations:
-1. Add Stripe columns to `credit_tiers`
-2. Add `stripe_price_id` to `user_subscriptions`
-3. Tighten RLS policies on credit tables
-4. Update `credit_tiers` with Stripe IDs after product creation
-
-### Stripe Products to Create:
-- 13 Pro tier products (monthly recurring)
-- 12 Business tier products (monthly recurring)
-- Optionally: 25 annual variants (20% discount)
+| `supabase/functions/buildable-generate/pipeline/core-directive.ts` | Add full-stack mindset, visual excellence v2, component completeness rules, animation requirements, Jarvis persona |
+| `supabase/functions/buildable-generate/pipeline/stages/generate.ts` | Enhance CODER_SYSTEM_PROMPT with richer patterns, 8-12 file minimum, expanded templates |
+| `supabase/functions/buildable-generate/pipeline/stages/plan.ts` | Force rich architecture, expanded image library (50+ images), section-level planning |
+| `supabase/functions/buildable-generate/pipeline/validation.ts` | Add image presence, section completeness, and polish validation rules |
+| `docs/backend-repo/BUILDABLE_AI_README.md` | Update documentation to reflect new standards |
+| `docs/backend-repo/src/services/ai/pipeline/stages/generate.ts` | Sync generate.ts with edge function version |
 
 ---
 
-## Security Guarantees
+## Expected Outcome
 
-1. **Credits cannot be self-modified** - All credit changes go through SECURITY DEFINER functions
-2. **Subscriptions are Stripe-controlled** - Only webhook can modify subscription data
-3. **Transaction log is immutable** - Users can only read, never write
-4. **RLS is enforced at database level** - Even if frontend is compromised, backend is secure
-5. **Webhook signature verification** - All Stripe events are cryptographically verified
+After implementation:
+- User asks: "Build me a bakery landing page"
+- System generates:
+  - 10+ files (Navbar, Hero, About, Features, Gallery, Menu, Testimonials, CTA, Contact, Footer)
+  - 6-8 bakery-specific Unsplash images
+  - Animations and hover effects throughout
+  - Mobile-responsive with hamburger menu
+  - Dark mode color scheme with bakery accents
+  - Gradient overlays and glass effects
+  - Complete, production-ready code
+
+The result will be indistinguishable from what a senior developer would build — beautiful, functional, and complete.
+
+---
+
+## Deployment Notes
+
+1. Changes to edge functions deploy automatically
+2. No database changes required
+3. No new dependencies needed
+4. Backend docs are for reference only (manual sync with external repo)
 
