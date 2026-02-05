@@ -79,6 +79,9 @@ export type Database = {
           is_popular: boolean
           plan_type: Database["public"]["Enums"]["subscription_plan_type"]
           price_cents: number
+          stripe_annual_price_id: string | null
+          stripe_price_id: string | null
+          stripe_product_id: string | null
         }
         Insert: {
           created_at?: string
@@ -87,6 +90,9 @@ export type Database = {
           is_popular?: boolean
           plan_type: Database["public"]["Enums"]["subscription_plan_type"]
           price_cents: number
+          stripe_annual_price_id?: string | null
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
         }
         Update: {
           created_at?: string
@@ -95,6 +101,9 @@ export type Database = {
           is_popular?: boolean
           plan_type?: Database["public"]["Enums"]["subscription_plan_type"]
           price_cents?: number
+          stripe_annual_price_id?: string | null
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
         }
         Relationships: []
       }
@@ -669,6 +678,7 @@ export type Database = {
           selected_credits: number
           status: string
           stripe_customer_id: string | null
+          stripe_price_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
           user_id: string
@@ -684,6 +694,7 @@ export type Database = {
           selected_credits?: number
           status?: string
           stripe_customer_id?: string | null
+          stripe_price_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id: string
@@ -699,6 +710,7 @@ export type Database = {
           selected_credits?: number
           status?: string
           stripe_customer_id?: string | null
+          stripe_price_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
