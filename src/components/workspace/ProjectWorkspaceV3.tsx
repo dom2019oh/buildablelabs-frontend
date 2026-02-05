@@ -109,6 +109,19 @@ export default function ProjectWorkspaceV3() {
   const [currentActions, setCurrentActions] = useState<string[]>([]);
   const [showHistoryInPreview, setShowHistoryInPreview] = useState(false);
 
+  // =========================================================================
+  // CRITICAL: Clear files when switching projects to prevent state leakage
+  // =========================================================================
+  useEffect(() => {
+    // Clear the store immediately when projectId changes
+    clearFiles();
+    setPreviewHtml('');
+    setCurrentRoute('/');
+    setPreviewKey(prev => prev + 1);
+    setCurrentVersionNumber(0);
+    setActiveMode('preview');
+  }, [projectId, clearFiles, setPreviewHtml]);
+
   // Pick the best file to compile into a static preview.
   // IMPORTANT: the AI may generate only /pages/* files (e.g. Dashboard.tsx), so we can't rely on Index/App.
   const pickPreviewEntryFile = useCallback(

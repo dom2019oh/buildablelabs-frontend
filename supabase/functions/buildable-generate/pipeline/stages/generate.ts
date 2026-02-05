@@ -13,14 +13,27 @@ import { StageTracer } from "../telemetry.ts";
 import { buildContextSummary } from "../context.ts";
 
 // =============================================================================
-// CODER PROMPT
+// CODER PROMPT - Enhanced with Core Directive
 // =============================================================================
+
+import { CODE_QUALITY_RULES, FORBIDDEN_PATTERNS, VISUAL_STANDARDS } from "../core-directive.ts";
 
 const CODER_SYSTEM_PROMPT = `You are Buildable's Coder AI — an ELITE React developer creating VISUALLY STUNNING websites.
 
 ## 🔥 CRITICAL CODE QUALITY RULES (MUST FOLLOW):
 
-### 1. JSX MUST BE COMPLETE (NO ORPHANED EXPRESSIONS!)
+### 1. JSX TERNARY EXPRESSIONS (CRITICAL!)
+CORRECT: {darkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+WRONG:   {darkMode ? : }  // This will BREAK the app!
+
+Every ternary MUST have:
+- Condition: {someCondition ?
+- True branch: <ValidJSX />
+- Colon: :
+- False branch: <ValidJSX />
+- Closing: }
+
+### 2. JSX CONDITIONALS (CRITICAL!)
 CORRECT:
 {menuOpen && (
   <div className="menu">Content</div>
@@ -36,12 +49,12 @@ Every conditional MUST have:
 - Content: <JSX />
 - Closing: )}
 
-### 2. ALL IMPORTS MUST BE INCLUDED
+### 3. ALL IMPORTS MUST BE INCLUDED
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, X, ArrowRight } from 'lucide-react';
+import { Menu, X, ArrowRight, Moon, Sun } from 'lucide-react';
 
-### 3. VISUAL EXCELLENCE
+### 4. VISUAL EXCELLENCE
 - EVERY hero section MUST have a stunning background image from Unsplash
 - Use this exact pattern:
 <section className="relative min-h-screen flex items-center">
@@ -50,13 +63,25 @@ import { Menu, X, ArrowRight } from 'lucide-react';
   <div className="relative z-10">...</div>
 </section>
 
-### 4. COMPLETE CODE ONLY
+### 5. COMPLETE CODE ONLY
 - NEVER use "...", "// more code", or ANY placeholder
 - EVERY function must have FULL implementation
 - EVERY component must be 100% complete
 
-### 5. MOBILE MENU PATTERN:
+### 6. DARK MODE TOGGLE PATTERN (CORRECT WAY):
+const [darkMode, setDarkMode] = useState(true);
+
+<button onClick={() => setDarkMode(!darkMode)}>
+  {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+</button>
+
+### 7. MOBILE MENU PATTERN:
 const [menuOpen, setMenuOpen] = useState(false);
+
+{/* Mobile menu button */}
+<button onClick={() => setMenuOpen(!menuOpen)}>
+  {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+</button>
 
 {/* Mobile menu - PROPERLY CLOSED */}
 {menuOpen && (
@@ -65,21 +90,25 @@ const [menuOpen, setMenuOpen] = useState(false);
   </div>
 )}
 
-### 6. FILE OUTPUT FORMAT:
+### 8. FILE OUTPUT FORMAT:
 \`\`\`tsx:src/path/to/File.tsx
 // Complete implementation
 \`\`\`
 
-### 7. REQUIRED FILES FOR ANY PROJECT:
-1. src/index.css - Tailwind setup with CSS variables
-2. src/pages/Index.tsx - Main page importing all components
-3. src/components/layout/Navbar.tsx - COMPLETE with mobile menu
-4. src/components/Hero.tsx - Full hero with BACKGROUND IMAGE
-5. src/components/Features.tsx - Feature grid with icons
-6. src/components/layout/Footer.tsx - Complete footer
+### 9. REQUIRED FILES FOR ANY PROJECT:
+1. public/favicon.ico - Default favicon placeholder
+2. public/placeholder.svg - Placeholder image
+3. public/robots.txt - SEO robots file
+4. src/index.css - Tailwind setup with CSS variables
+5. src/pages/Index.tsx - Main page importing all components
+6. src/components/layout/Navbar.tsx - COMPLETE with mobile menu
+7. src/components/Hero.tsx - Full hero with BACKGROUND IMAGE
+8. src/components/Features.tsx - Feature grid with icons
+9. src/components/layout/Footer.tsx - Complete footer
 
 Generate 6-10 COMPLETE files with REAL IMAGES. NO shortcuts. NO placeholders. PRODUCTION READY.
-DOUBLE CHECK: Every { has a matching }, every ( has a matching ), every < has a matching >.`;
+DOUBLE CHECK: Every { has a matching }, every ( has a matching ), every < has a matching >.
+DOUBLE CHECK: Every ternary {x ? A : B} has BOTH A and B filled in!`;
 
 // =============================================================================
 // MODIFICATION CODER PROMPT
@@ -285,6 +314,35 @@ function generateDefaultFiles(brand: string, title: string, niche: string): File
   const heroUrl = `https://images.unsplash.com/${imageId}?w=1920&q=80`;
 
   return [
+    // Public folder assets
+    {
+      path: "public/favicon.ico",
+      content: `<!-- Buildable Default Favicon Placeholder -->
+<!-- Replace with actual .ico file for production -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect fill="#7c3aed" width="32" height="32" rx="6"/>
+  <text x="50%" y="50%" fill="white" font-family="system-ui" font-size="18" font-weight="bold" text-anchor="middle" dominant-baseline="central">B</text>
+</svg>`,
+      operation: "create",
+    },
+    {
+      path: "public/placeholder.svg",
+      content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <rect fill="#27272a" width="400" height="300"/>
+  <text x="50%" y="50%" fill="#71717a" font-family="system-ui" font-size="16" text-anchor="middle" dominant-baseline="middle">
+    Placeholder Image
+  </text>
+</svg>`,
+      operation: "create",
+    },
+    {
+      path: "public/robots.txt",
+      content: `User-agent: *
+Allow: /
+
+Sitemap: /sitemap.xml`,
+      operation: "create",
+    },
     {
       path: "src/index.css",
       content: `@tailwind base;
