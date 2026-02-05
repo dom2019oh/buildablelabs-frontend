@@ -170,8 +170,7 @@ export default function Privacy() {
             </p>
             <div className="bg-zinc-700 rounded-lg p-4">
               <p className="text-white font-medium">Buildable Labs</p>
-              <p>Email: privacy@buildablelabs.com</p>
-              <p>Address: 123 Innovation Street, Tech City, TC 12345</p>
+              <p>Email: <a href="mailto:buildablelabs@gmail.com" className="text-purple-400 hover:text-purple-300">buildablelabs@gmail.com</a></p>
             </div>
           </section>
         </div>
