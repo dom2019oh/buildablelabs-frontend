@@ -456,16 +456,14 @@ serve(async (req) => {
       );
     }
 
-    // Credits check - DISABLED FOR TESTING MODE
-    // TODO: Re-enable before production
-    // const { data: hasCredits } = await supabase.rpc("user_has_credits", { p_user_id: user.id, p_amount: 0.10 });
-    // if (hasCredits === false) {
-    //   return new Response(
-    //     JSON.stringify({ error: "Insufficient credits" }),
-    //     { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    //   );
-    // }
-    console.log("[TESTING MODE] Credit check bypassed");
+    // Credits check
+    const { data: hasCredits } = await supabase.rpc("user_has_credits", { p_user_id: user.id, p_amount: 0.10 });
+    if (hasCredits === false) {
+      return new Response(
+        JSON.stringify({ error: "Insufficient credits" }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { projectId, message, conversationHistory, stream, existingFiles = [], usePipeline = false } = await req.json() as ChatRequest;
     if (!projectId || !message) throw new Error("Missing projectId or message");
@@ -480,15 +478,13 @@ serve(async (req) => {
 
     console.log(`Task: ${taskType}, Pipeline: ${usePipeline}, Files: ${existingFiles.length}`);
 
-    // Deduct credits - DISABLED FOR TESTING MODE
-    // TODO: Re-enable before production
-    // await supabase.rpc("deduct_credits", {
-    //   p_user_id: user.id,
-    //   p_action_type: "ai_chat",
-    //   p_description: `AI: ${taskType}`,
-    //   p_metadata: { taskType, projectId }
-    // });
-    console.log("[TESTING MODE] Credit deduction bypassed");
+    // Deduct credits
+    await supabase.rpc("deduct_credits", {
+      p_user_id: user.id,
+      p_action_type: "ai_chat",
+      p_description: `AI: ${taskType}`,
+      p_metadata: { taskType, projectId }
+    });
 
     const metadata = {
       type: "metadata",
