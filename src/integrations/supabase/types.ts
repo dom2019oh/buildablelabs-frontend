@@ -666,6 +666,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_onboarding: {
+        Row: {
+          completed: boolean
+          created_at: string
+          id: string
+          q1: string | null
+          q2: string | null
+          q3: string | null
+          q4: string | null
+          q5: string | null
+          q6: string | null
+          skipped: boolean
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          id: string
+          q1?: string | null
+          q2?: string | null
+          q3?: string | null
+          q4?: string | null
+          q5?: string | null
+          q6?: string | null
+          skipped?: boolean
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          q1?: string | null
+          q2?: string | null
+          q3?: string | null
+          q4?: string | null
+          q5?: string | null
+          q6?: string | null
+          skipped?: boolean
+        }
+        Relationships: []
+      }
       user_subscriptions: {
         Row: {
           billing_period_end: string
