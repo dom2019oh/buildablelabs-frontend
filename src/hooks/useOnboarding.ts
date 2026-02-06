@@ -79,7 +79,8 @@ export async function saveOnboardingAnswers(
 
   const { error } = await supabase
     .from('user_onboarding')
-    .update({
+    .upsert({
+      id: user.id,
       q1: answers.q1 || null,
       q2: answers.q2 || null,
       q3: answers.q3 || null,
@@ -88,8 +89,7 @@ export async function saveOnboardingAnswers(
       q6: answers.q6 || null,
       completed,
       skipped
-    })
-    .eq('id', user.id);
+    }, { onConflict: 'id' });
 
   if (error) throw error;
 

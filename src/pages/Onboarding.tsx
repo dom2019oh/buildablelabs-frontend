@@ -143,7 +143,7 @@ export default function Onboarding() {
         .single();
 
       if (data?.completed || data?.skipped) {
-        navigate('/dashboard');
+        navigate(returnTo, { replace: true });
       }
     };
     checkAuth();
