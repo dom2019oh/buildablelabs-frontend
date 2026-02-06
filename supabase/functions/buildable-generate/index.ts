@@ -1,35 +1,26 @@
 // =============================================================================
-// BUILDABLE AI - DETERMINISTIC AGENT PIPELINE 🔥
+// BUILDABLE AI - SSE STREAMING PIPELINE
 // =============================================================================
-// 8-stage autonomous engineering agent with:
-// - Structured intent extraction and planning
-// - Context-aware code generation
-// - Automated validation and self-repair
-// - Multi-model coordination with confidence scoring
-// - Full telemetry and observability
-//
-// Pipeline: Intent → Plan → Generate → Validate → Repair → Persona → Deploy
+// Converts the blocking pipeline to Server-Sent Events for progressive delivery.
+// Files are streamed as they're generated + saved to DB incrementally.
 
 import { serve } from "jsr:@std/http";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
-// Import new pipeline orchestrator
 import { 
   createPipelineContext, 
   runPipeline, 
-  saveFilesToDatabase,
+  saveFileToDatabase,
   updateSessionStatus 
 } from "./pipeline/index.ts";
+import type { SyncEvent, OnSyncEvent } from "./pipeline/types.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// =============================================================================
-// RAILWAY BACKEND - Primary endpoint (fallback if available)
-// =============================================================================
 const RAILWAY_BACKEND_URL = "https://api.buildablelabs.dev";
 
 // deno-lint-ignore no-explicit-any
@@ -197,9 +188,9 @@ serve(async (req) => {
     }
 
     // =======================================================================
-    // NEW: DETERMINISTIC AGENT PIPELINE
+    // SSE STREAMING PIPELINE
     // =======================================================================
-    console.log("[Pipeline] 🔥 Running 8-stage deterministic pipeline...");
+    console.log("[Pipeline] 🔥 Running SSE streaming pipeline...");
 
     // Create generation session
     const { data: session } = await supabase
@@ -240,59 +231,94 @@ serve(async (req) => {
       existingFiles: existingFileOps,
     });
 
-    // Execute the 8-stage pipeline
-    const result = await runPipeline(pipelineContext);
+    // Create SSE stream
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        
+        function emit(event: SyncEvent) {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          } catch {
+            // Stream may be closed
+          }
+        }
 
-    // Save generated files to database
-    if (result.success && result.files.length > 0) {
-      await saveFilesToDatabase(
-        supabase, 
-        wsId, 
-        user.id, 
-        sessionId, 
-        result.files, 
-        result.modelsUsed
-      );
-    }
+        // Event callback for progressive delivery
+        const onEvent: OnSyncEvent = async (event) => {
+          emit(event);
 
-    // Update session status
-    await updateSessionStatus(supabase, sessionId, result, pipelineContext);
+          // Save files to DB as they're emitted
+          if (event.type === "file" && (event as Record<string, unknown>).path) {
+            const fileEvent = event as { path: string; content?: string; command: string };
+            if (fileEvent.content && (fileEvent.command === "CREATE_FILE" || fileEvent.command === "UPDATE_FILE")) {
+              await saveFileToDatabase(
+                supabase, wsId, user.id, sessionId,
+                { path: fileEvent.path, content: fileEvent.content, operation: fileEvent.command === "CREATE_FILE" ? "create" : "update" },
+                pipelineContext.modelsUsed
+              );
+            }
+          }
+        };
 
-    // Update workspace status
-    await supabase
-      .from("workspaces")
-      .update({ status: result.success ? "ready" : "error" })
-      .eq("id", wsId);
+        try {
+          // Execute the pipeline with SSE event callback
+          const result = await runPipeline(pipelineContext, onEvent);
 
-    // Build response
-    return new Response(JSON.stringify({
-      success: result.success,
-      sessionId,
-      filesGenerated: result.files.length,
-      filePaths: result.files.map(f => f.path),
-      modelsUsed: result.modelsUsed,
-      
-      // Provider diagnostics
-      providersAvailable: {
-        grok: hasGrok,
-        gemini: hasGemini,
-        openai: hasOpenAI,
+          // Update session status
+          await updateSessionStatus(supabase, sessionId, result, pipelineContext);
+
+          // Update workspace status
+          await supabase
+            .from("workspaces")
+            .update({ status: result.success ? "ready" : "error" })
+            .eq("id", wsId);
+
+          // Emit completion event
+          emit({
+            type: "complete",
+            filesGenerated: result.files.length,
+            filePaths: result.files.map(f => f.path),
+            aiMessage: result.aiMessage,
+            routes: result.routes,
+            suggestions: result.suggestions,
+            modelsUsed: result.modelsUsed,
+            validationPassed: result.validationPassed,
+            repairAttempts: result.repairAttempts,
+            sessionId,
+            providersAvailable: { grok: hasGrok, gemini: hasGemini, openai: hasOpenAI },
+          });
+
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Pipeline failed";
+          console.error("[Pipeline] ❌ Error:", errorMessage);
+
+          emit({ type: "error", message: errorMessage });
+
+          // Update workspace status on error
+          await supabase
+            .from("workspaces")
+            .update({ status: "error" })
+            .eq("id", wsId);
+        } finally {
+          // Send done signal and close
+          try {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          } catch {
+            // Already closed
+          }
+        }
       },
-      
-      // Validation results
-      validationPassed: result.validationPassed,
-      repairAttempts: result.repairAttempts,
-      errors: result.errors,
-      
-      // Persona response for chat display
-      aiMessage: result.aiMessage,
-      routes: result.routes,
-      suggestions: result.suggestions,
-      
-      // Telemetry (for engineering debugging)
-      telemetry: result.telemetry,
-    }), { 
-      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
+
+    return new Response(stream, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
     });
 
   } catch (error) {

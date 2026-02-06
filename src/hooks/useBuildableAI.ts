@@ -1,16 +1,26 @@
 // =============================================================================
-// useBuildableAI - Streaming AI hook that persists files to workspace
+// useBuildableAI - SSE-first AI hook with direct Zustand store dispatch
 // =============================================================================
 // This hook connects to the buildable-generate edge function which:
-// 1. Streams AI responses in real-time
-// 2. Automatically saves generated files to workspace_files
-// 3. Updates generation_sessions for history tracking
+// 1. Streams SSE events for progressive file delivery
+// 2. Dispatches file commands directly to the Zustand store (single source of truth)
+// 3. Falls back to JSON parsing for backwards compatibility
+// 4. Automatically saves generated files to workspace_files via the backend
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import { useProjectFilesStore } from '@/stores/projectFilesStore';
+import { 
+  parseSSEEvent, 
+  buildContextSummary, 
+  type SyncEvent, 
+  type FileEvent, 
+  type CompleteEvent, 
+  type StageEvent, 
+  type ErrorEvent 
+} from '@/lib/syncEngine';
 
 // =============================================================================
 // TYPES
@@ -23,7 +33,6 @@ export interface GenerationMetadata {
   model: string;
   filesGenerated?: number;
   filePaths?: string[];
-  // NEW: Persona response from Beast Mode
   aiMessage?: string;
   routes?: string[];
   suggestions?: string[];
@@ -35,7 +44,7 @@ export interface GeneratedFile {
 }
 
 export interface GenerationPhase {
-  phase: 'idle' | 'starting' | 'generating' | 'saving' | 'complete' | 'error';
+  phase: 'idle' | 'starting' | 'context' | 'intent' | 'planning' | 'generating' | 'validating' | 'repairing' | 'complete' | 'error';
   message: string;
   progress?: number;
 }
@@ -45,34 +54,22 @@ interface UseBuildableAIState {
   streamingContent: string;
   metadata: GenerationMetadata | null;
   phase: GenerationPhase;
-  generatedFiles: GeneratedFile[];
   error: string | null;
-  // NEW: Persona response for display
   aiMessage: string;
   routes: string[];
   suggestions: string[];
+  filesDelivered: number;
 }
 
-// =============================================================================
-// FILE EXTRACTION
-// =============================================================================
-
-function extractFilesFromContent(content: string): GeneratedFile[] {
-  const files: GeneratedFile[] = [];
-  const codeBlockRegex = /```(\w+)?:([^\n]+)\n([\s\S]*?)```/g;
-  let match;
-
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    const path = match[2].trim().replace(/^\/+/, "");
-    const fileContent = match[3];
-
-    if (path && fileContent && path.includes("/")) {
-      files.push({ path, content: fileContent });
-    }
-  }
-
-  return files;
-}
+// Map SSE stage names to phase labels
+const STAGE_LABELS: Record<string, { phase: GenerationPhase['phase']; label: string; progress: number }> = {
+  context: { phase: 'context', label: 'Analyzing project...', progress: 5 },
+  intent: { phase: 'intent', label: 'Understanding your request...', progress: 15 },
+  plan: { phase: 'planning', label: 'Planning architecture...', progress: 30 },
+  generate: { phase: 'generating', label: 'Generating code...', progress: 50 },
+  validate: { phase: 'validating', label: 'Validating code...', progress: 80 },
+  repair: { phase: 'repairing', label: 'Fixing issues...', progress: 90 },
+};
 
 // =============================================================================
 // HOOK
@@ -82,60 +79,22 @@ export function useBuildableAI(projectId: string | undefined) {
   const { session } = useAuth();
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
-  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const [state, setState] = useState<UseBuildableAIState>({
     isGenerating: false,
     streamingContent: '',
     metadata: null,
     phase: { phase: 'idle', message: '' },
-    generatedFiles: [],
     error: null,
     aiMessage: '',
     routes: ['/'],
     suggestions: [],
+    filesDelivered: 0,
   });
-
-  // Subscribe to workspace file changes for real-time updates
-  const subscribeToWorkspace = useCallback((workspaceId: string) => {
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-    }
-
-    const channel = supabase
-      .channel(`buildable-${workspaceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'workspace_files',
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        (payload) => {
-          console.log('[Realtime] New file:', payload.new);
-          // File was saved by the edge function
-          const file = payload.new as { file_path: string; content: string };
-          setState(prev => ({
-            ...prev,
-            generatedFiles: [
-              ...prev.generatedFiles.filter(f => f.path !== file.file_path),
-              { path: file.file_path, content: file.content }
-            ]
-          }));
-        }
-      )
-      .subscribe();
-
-    channelRef.current = channel;
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -166,21 +125,30 @@ export function useBuildableAI(projectId: string | undefined) {
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
 
+    // Get store actions for direct dispatch
+    const store = useProjectFilesStore.getState();
+
+    // Build context summary from current files for AI context injection
+    const contextSummary = buildContextSummary(store.files);
+
+    // Inject context summary into conversation history
+    const enhancedHistory = [
+      ...conversationHistory,
+      { role: 'system', content: `[FILE_CONTEXT]\n${contextSummary}` },
+    ];
+
     // Reset state
     setState({
       isGenerating: true,
       streamingContent: '',
       metadata: null,
       phase: { phase: 'starting', message: 'Starting generation...' },
-      generatedFiles: [],
       error: null,
       aiMessage: '',
       routes: ['/'],
       suggestions: [],
+      filesDelivered: 0,
     });
-
-    // Subscribe to workspace updates
-    subscribeToWorkspace(workspaceId);
 
     try {
       const response = await fetch(
@@ -195,7 +163,7 @@ export function useBuildableAI(projectId: string | undefined) {
             projectId,
             workspaceId,
             prompt,
-            conversationHistory,
+            conversationHistory: enhancedHistory,
             existingFiles,
           }),
           signal,
@@ -203,18 +171,16 @@ export function useBuildableAI(projectId: string | undefined) {
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: 'Generation failed' }));
         throw new Error(errorData.error || 'Generation failed');
       }
 
-      // ---------------------------------------------------------------------
-      // NOTE: The backend currently returns a single JSON payload (not SSE).
-      // Fall back to JSON-mode if response is not an event stream.
-      // ---------------------------------------------------------------------
       const contentType = response.headers.get('content-type') || '';
-      const isJson = contentType.includes('application/json');
 
-      if (isJson) {
+      // =====================================================================
+      // JSON FALLBACK (Railway backend or older edge function)
+      // =====================================================================
+      if (contentType.includes('application/json')) {
         const payload = await response.json().catch(() => null) as null | {
           success?: boolean;
           sessionId?: string | null;
@@ -259,9 +225,7 @@ export function useBuildableAI(projectId: string | undefined) {
               : (payload?.errors?.[0] || 'Generation failed'),
             progress: 100,
           },
-          // Files are persisted via realtime inserts; we don't rely on parsing code blocks.
           streamingContent: payload?.aiMessage ?? '',
-          generatedFiles: prev.generatedFiles,
           error: payload?.success ? null : (payload?.errors?.join('\n') || 'Generation failed'),
         }));
 
@@ -276,6 +240,9 @@ export function useBuildableAI(projectId: string | undefined) {
         return;
       }
 
+      // =====================================================================
+      // SSE STREAMING (Primary path)
+      // =====================================================================
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error('No response body');
@@ -283,13 +250,8 @@ export function useBuildableAI(projectId: string | undefined) {
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let fullContent = '';
-      let metadata: GenerationMetadata | null = null;
-
-      setState(prev => ({
-        ...prev,
-        phase: { phase: 'generating', message: 'AI is generating code...', progress: 10 }
-      }));
+      let deliveredFiles: GeneratedFile[] = [];
+      let fileCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -305,88 +267,131 @@ export function useBuildableAI(projectId: string | undefined) {
 
           if (line.endsWith('\r')) line = line.slice(0, -1);
           if (line.startsWith(':') || line.trim() === '') continue;
-          if (!line.startsWith('data: ')) continue;
 
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
+          const event = parseSSEEvent(line);
+          if (!event) continue;
 
-          try {
-            const parsed = JSON.parse(jsonStr);
+          switch (event.type) {
+            case 'stage': {
+              const stageEvent = event as StageEvent;
+              const stageInfo = STAGE_LABELS[stageEvent.stage];
+              if (stageInfo && stageEvent.status === 'start') {
+                setState(prev => ({
+                  ...prev,
+                  phase: {
+                    phase: stageInfo.phase,
+                    message: stageEvent.message || stageInfo.label,
+                    progress: stageInfo.progress,
+                  },
+                }));
+              }
+              break;
+            }
 
-            // Handle metadata event
-            if (parsed.type === 'metadata') {
-              metadata = {
-                sessionId: parsed.sessionId,
-                workspaceId: parsed.workspaceId,
-                status: parsed.status,
-                model: parsed.model,
+            case 'file': {
+              const fileEvent = event as FileEvent;
+              if (fileEvent.path && fileEvent.content) {
+                // DIRECT DISPATCH TO ZUSTAND STORE (Single Source of Truth)
+                const currentStore = useProjectFilesStore.getState();
+                
+                if (fileEvent.command === 'DELETE_FILE') {
+                  currentStore.removeFile(fileEvent.path);
+                } else if (fileEvent.command === 'PATCH_FILE' && fileEvent.patches) {
+                  currentStore.patchFile(fileEvent.path, fileEvent.patches);
+                } else {
+                  // CREATE_FILE or UPDATE_FILE
+                  currentStore.addFile(fileEvent.path, fileEvent.content);
+                }
+
+                fileCount++;
+                deliveredFiles.push({ path: fileEvent.path, content: fileEvent.content });
+
+                setState(prev => ({
+                  ...prev,
+                  filesDelivered: fileCount,
+                  phase: {
+                    ...prev.phase,
+                    message: `Generated ${fileCount} file(s)...`,
+                    progress: Math.min(95, 50 + fileCount * 5),
+                  },
+                }));
+              }
+              break;
+            }
+
+            case 'complete': {
+              const completeEvent = event as CompleteEvent;
+              const metadata: GenerationMetadata = {
+                sessionId: (completeEvent as any).sessionId ?? null,
+                workspaceId,
+                status: 'completed',
+                model: completeEvent.modelsUsed?.join(' → ') || 'unknown',
+                filesGenerated: completeEvent.filesGenerated,
+                filePaths: completeEvent.filePaths,
+                aiMessage: completeEvent.aiMessage,
+                routes: completeEvent.routes,
+                suggestions: completeEvent.suggestions,
               };
-              setState(prev => ({ ...prev, metadata }));
-              continue;
-            }
 
-            // Handle completion event
-            if (parsed.type === 'completion') {
               setState(prev => ({
                 ...prev,
-                phase: { phase: 'complete', message: `Generated ${parsed.filesGenerated} files`, progress: 100 },
-                metadata: {
-                  ...prev.metadata!,
-                  filesGenerated: parsed.filesGenerated,
-                  filePaths: parsed.filePaths,
-                },
-              }));
-              continue;
-            }
-
-            // Handle content delta
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullContent += content;
-              
-              // Extract files as they come in
-              const files = extractFilesFromContent(fullContent);
-              
-              setState(prev => ({
-                ...prev,
-                streamingContent: fullContent,
-                generatedFiles: files,
+                isGenerating: false,
+                metadata,
+                aiMessage: completeEvent.aiMessage || '',
+                routes: completeEvent.routes || ['/'],
+                suggestions: completeEvent.suggestions || [],
+                streamingContent: completeEvent.aiMessage || '',
                 phase: {
-                  phase: 'generating',
-                  message: files.length > 0 ? `Generating ${files.length} file(s)...` : 'Generating code...',
-                  progress: Math.min(90, 20 + files.length * 10),
+                  phase: 'complete',
+                  message: `Generated ${completeEvent.filesGenerated} file(s)`,
+                  progress: 100,
                 },
               }));
-              
-              onChunk?.(content, fullContent);
+
+              if (completeEvent.filesGenerated > 0) {
+                toast({
+                  title: '✅ Generation Complete',
+                  description: `Created ${completeEvent.filesGenerated} file(s)`,
+                });
+              }
+
+              onComplete?.(deliveredFiles, metadata);
+              break;
             }
-          } catch {
-            // Incomplete JSON, put back
-            buffer = line + '\n' + buffer;
-            break;
+
+            case 'error': {
+              const errorEvent = event as ErrorEvent;
+              setState(prev => ({
+                ...prev,
+                isGenerating: false,
+                error: errorEvent.message,
+                phase: { phase: 'error', message: errorEvent.message },
+              }));
+
+              toast({
+                title: 'Generation Failed',
+                description: errorEvent.message,
+                variant: 'destructive',
+              });
+
+              onError?.(new Error(errorEvent.message));
+              break;
+            }
           }
         }
       }
 
-      // Final extraction
-      const finalFiles = extractFilesFromContent(fullContent);
-
-      setState(prev => ({
-        ...prev,
-        isGenerating: false,
-        streamingContent: fullContent,
-        generatedFiles: finalFiles,
-        phase: { phase: 'complete', message: `Generated ${finalFiles.length} files`, progress: 100 },
-      }));
-
-      onComplete?.(finalFiles, metadata);
-
-      if (finalFiles.length > 0) {
-        toast({
-          title: '✅ Generation Complete',
-          description: `Created ${finalFiles.length} file(s)`,
-        });
-      }
+      // If we didn't get a complete event, finalize
+      setState(prev => {
+        if (prev.phase.phase !== 'complete' && prev.phase.phase !== 'error') {
+          return {
+            ...prev,
+            isGenerating: false,
+            phase: { phase: 'complete', message: `Generated ${fileCount} file(s)`, progress: 100 },
+          };
+        }
+        return prev;
+      });
 
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
@@ -426,7 +431,7 @@ export function useBuildableAI(projectId: string | undefined) {
 
       onError?.(error instanceof Error ? error : new Error(errorMessage));
     }
-  }, [session?.access_token, projectId, subscribeToWorkspace, toast]);
+  }, [session?.access_token, projectId, toast]);
 
   // Cancel generation
   const cancel = useCallback(() => {
@@ -448,11 +453,11 @@ export function useBuildableAI(projectId: string | undefined) {
       streamingContent: '',
       metadata: null,
       phase: { phase: 'idle', message: '' },
-      generatedFiles: [],
       error: null,
       aiMessage: '',
       routes: ['/'],
       suggestions: [],
+      filesDelivered: 0,
     });
   }, []);
 
@@ -461,5 +466,7 @@ export function useBuildableAI(projectId: string | undefined) {
     generate,
     cancel,
     reset,
+    // Backwards compat - files are now in Zustand store directly
+    generatedFiles: [] as GeneratedFile[],
   };
 }

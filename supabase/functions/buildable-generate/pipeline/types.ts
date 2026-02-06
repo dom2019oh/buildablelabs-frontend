@@ -345,3 +345,32 @@ export const CIRCUIT_BREAKER_CONFIG = {
   failureThreshold: 3,
   cooldownPeriod: 60_000, // 1 minute
 } as const;
+
+// =============================================================================
+// SYNC ENGINE TYPES - Command Protocol & SSE Events
+// =============================================================================
+
+export type CommandType = "CREATE_FILE" | "UPDATE_FILE" | "DELETE_FILE" | "PATCH_FILE";
+
+export interface SearchReplacePatch {
+  search: string;
+  replace: string;
+  context?: string;
+}
+
+export interface FileCommand {
+  command: CommandType;
+  path: string;
+  content?: string;
+  patches?: SearchReplacePatch[];
+  metadata?: { language?: string; purpose?: string };
+}
+
+export type SyncEventType = "stage" | "file" | "complete" | "error";
+
+export interface SyncEvent {
+  type: SyncEventType;
+  [key: string]: unknown;
+}
+
+export type OnSyncEvent = (event: SyncEvent) => void;

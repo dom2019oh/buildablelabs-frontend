@@ -1,12 +1,13 @@
 // =============================================================================
-// PIPELINE ORCHESTRATOR - Main 8-stage deterministic pipeline
+// PIPELINE ORCHESTRATOR - SSE-enabled 8-stage deterministic pipeline
 // =============================================================================
 
 import type { 
   PipelineContext, 
   PipelineResult, 
   FileOperation,
-  DB
+  DB,
+  OnSyncEvent
 } from "./types.ts";
 import { SAFETY_LIMITS } from "./types.ts";
 import { TelemetryLogger, StageTracer, collectMetrics } from "./telemetry.ts";
@@ -70,7 +71,6 @@ function generatePersonaResponse(
   routes: string[],
   isNewProject: boolean
 ): { message: string; routes: string[]; suggestions: string[] } {
-  // Generate contextual suggestions based on what was created
   const suggestions: string[] = [];
   const hasNavbar = files.some(f => f.path.toLowerCase().includes("navbar"));
   const hasHero = files.some(f => f.path.toLowerCase().includes("hero"));
@@ -83,7 +83,6 @@ function generatePersonaResponse(
   suggestions.push("Browse the [Components Library](/dashboard/components)");
   suggestions.push("Try a different style from the [Backgrounds Library](/dashboard/backgrounds)");
 
-  // Detect project type for emoji
   const p = prompt.toLowerCase();
   let emoji = "🎨";
   let projectType = "website";
@@ -94,7 +93,6 @@ function generatePersonaResponse(
   else if (p.includes("blog")) { emoji = "📝"; projectType = "blog"; }
   else if (p.includes("saas")) { emoji = "🚀"; projectType = "SaaS landing page"; }
 
-  // Build file list
   const fileList = files.map(f => f.path.split("/").pop()).slice(0, 5).join(", ");
 
   let message: string;
@@ -126,13 +124,23 @@ function extractRoutesFromFiles(files: FileOperation[]): string[] {
 }
 
 // =============================================================================
-// MAIN PIPELINE EXECUTION
+// MAIN PIPELINE EXECUTION (SSE-enabled)
 // =============================================================================
 
-export async function runPipeline(context: PipelineContext): Promise<PipelineResult> {
+export async function runPipeline(
+  context: PipelineContext,
+  onEvent?: OnSyncEvent
+): Promise<PipelineResult> {
   const logger = new TelemetryLogger(context.sessionId, context.workspaceId);
   const tracer = new StageTracer(context);
   const isNewProject = context.existingFiles.length === 0;
+
+  // Helper to emit SSE events
+  const emit = (event: Record<string, unknown>) => {
+    if (onEvent) {
+      try { onEvent(event as any); } catch { /* ignore */ }
+    }
+  };
 
   logger.info("Pipeline started", {
     prompt: context.originalPrompt.slice(0, 100),
@@ -140,7 +148,6 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
   });
 
   try {
-    // Check for available providers
     if (!hasAnyProvider()) {
       throw new Error("No AI providers configured");
     }
@@ -158,20 +165,22 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
     // =======================================================================
     // STAGE 0: BUILD PROJECT CONTEXT
     // =======================================================================
-    logger.info("Building project context...");
+    emit({ type: "stage", stage: "context", status: "start", message: "Analyzing project..." });
+    
     context.projectContext = await buildProjectContext(
       context.supabase,
       context.workspaceId,
       context.existingFiles
     );
-
-    // Save context to session
     await saveContextToSession(context.supabase, context.sessionId, context.projectContext);
+    
+    emit({ type: "stage", stage: "context", status: "complete" });
 
     // =======================================================================
     // STAGE 1: INTENT EXTRACTION
     // =======================================================================
-    logger.info("Stage 1: Intent extraction...");
+    emit({ type: "stage", stage: "intent", status: "start", message: "Understanding your request..." });
+    
     const intentResult = await executeIntentStage(context);
     
     if (!intentResult.success || !intentResult.data) {
@@ -183,6 +192,8 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
         confidence: context.intent.confidence 
       });
     }
+
+    emit({ type: "stage", stage: "intent", status: "complete", data: { type: context.intent?.type } });
 
     // Check if this is a question (no code generation needed)
     if (context.intent?.type === "question") {
@@ -201,7 +212,7 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
     // =======================================================================
     // STAGE 3: ARCHITECTURE PLANNING
     // =======================================================================
-    logger.info("Stage 3: Architecture planning...");
+    emit({ type: "stage", stage: "plan", status: "start", message: "Planning architecture..." });
     
     if (context.sessionId) {
       await context.supabase
@@ -214,7 +225,6 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
     
     if (!planResult.success || !planResult.data) {
       logger.warn("Plan generation failed, will use defaults");
-      // Plan stage already returns default plan on failure
     } else {
       context.plan = planResult.data;
       logger.info("Plan created", {
@@ -224,13 +234,13 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
       });
     }
 
-    // Create rollback point before generation
+    emit({ type: "stage", stage: "plan", status: "complete", data: { projectType: context.plan?.projectType } });
     createRollbackPoint(context, "plan");
 
     // =======================================================================
-    // STAGE 4: CODE GENERATION
+    // STAGE 4: CODE GENERATION (with progressive file emission)
     // =======================================================================
-    logger.info("Stage 4: Code generation...");
+    emit({ type: "stage", stage: "generate", status: "start", message: "Generating code..." });
     
     if (context.sessionId) {
       await context.supabase
@@ -252,13 +262,23 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
     // Filter out non-writeable files
     context.generatedFiles = context.generatedFiles.filter(f => isPathWriteable(f.path));
 
-    // Create rollback point after generation
+    // Emit each generated file as an SSE event
+    for (const file of context.generatedFiles) {
+      emit({
+        type: "file",
+        command: file.operation === "create" ? "CREATE_FILE" : "UPDATE_FILE",
+        path: file.path,
+        content: file.content,
+      });
+    }
+
+    emit({ type: "stage", stage: "generate", status: "complete", data: { fileCount: context.generatedFiles.length } });
     createRollbackPoint(context, "generate");
 
     // =======================================================================
     // STAGE 5: VALIDATION
     // =======================================================================
-    logger.info("Stage 5: Validation...");
+    emit({ type: "stage", stage: "validate", status: "start", message: "Validating code..." });
     
     if (context.sessionId) {
       await context.supabase
@@ -277,11 +297,13 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
       validation.score
     );
 
+    emit({ type: "stage", stage: "validate", status: "complete", data: { valid: validation.valid, score: validation.score } });
+
     // =======================================================================
     // STAGE 6-8: REPAIR LOOP (if needed)
     // =======================================================================
     if (!validation.valid) {
-      logger.info("Running repair loop...");
+      emit({ type: "stage", stage: "repair", status: "start", message: "Fixing issues..." });
       
       const repairResult = await runRepairLoop(context, validation);
       
@@ -289,10 +311,17 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
       context.validationResults = repairResult.validation;
       validation = repairResult.validation;
 
-      logger.info("Repair complete", {
-        attempts: repairResult.repairAttempts,
-        success: repairResult.success,
-      });
+      // Re-emit repaired files
+      for (const file of context.generatedFiles) {
+        emit({
+          type: "file",
+          command: "UPDATE_FILE",
+          path: file.path,
+          content: file.content,
+        });
+      }
+
+      emit({ type: "stage", stage: "repair", status: "complete", data: { attempts: repairResult.repairAttempts, success: repairResult.success } });
     }
 
     // =======================================================================
@@ -335,6 +364,8 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
     const errorMessage = error instanceof Error ? error.message : "Pipeline failed";
     logger.error("Pipeline error", { error: errorMessage });
 
+    emit({ type: "error", message: errorMessage });
+
     return {
       success: false,
       files: [],
@@ -350,7 +381,47 @@ export async function runPipeline(context: PipelineContext): Promise<PipelineRes
 }
 
 // =============================================================================
-// SAVE FILES TO DATABASE
+// SAVE SINGLE FILE TO DATABASE (for progressive saving)
+// =============================================================================
+
+export async function saveFileToDatabase(
+  supabase: DB,
+  workspaceId: string,
+  userId: string,
+  sessionId: string | null,
+  file: FileOperation,
+  modelsUsed: string[]
+): Promise<void> {
+  try {
+    await supabase.from("workspace_files").upsert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      file_path: file.path,
+      content: file.content,
+      file_type: file.path.split(".").pop() || "txt",
+      is_generated: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "workspace_id,file_path" });
+
+    await supabase.from("file_operations").insert({
+      workspace_id: workspaceId,
+      session_id: sessionId,
+      user_id: userId,
+      operation: file.operation,
+      file_path: file.path,
+      new_content: file.content,
+      ai_model: modelsUsed.join(" → "),
+      validated: true,
+      applied: true,
+      applied_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error(`[Pipeline] Failed to save ${file.path}:`, err);
+  }
+}
+
+// =============================================================================
+// SAVE FILES TO DATABASE (batch - kept for backwards compat)
 // =============================================================================
 
 export async function saveFilesToDatabase(
@@ -362,32 +433,7 @@ export async function saveFilesToDatabase(
   modelsUsed: string[]
 ): Promise<void> {
   for (const file of files) {
-    try {
-      await supabase.from("workspace_files").upsert({
-        workspace_id: workspaceId,
-        user_id: userId,
-        file_path: file.path,
-        content: file.content,
-        file_type: file.path.split(".").pop() || "txt",
-        is_generated: true,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "workspace_id,file_path" });
-
-      await supabase.from("file_operations").insert({
-        workspace_id: workspaceId,
-        session_id: sessionId,
-        user_id: userId,
-        operation: file.operation,
-        file_path: file.path,
-        new_content: file.content,
-        ai_model: modelsUsed.join(" → "),
-        validated: true,
-        applied: true,
-        applied_at: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.error(`[Pipeline] Failed to save ${file.path}:`, err);
-    }
+    await saveFileToDatabase(supabase, workspaceId, userId, sessionId, file, modelsUsed);
   }
 }
 

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { FileNode, buildFileTree } from '@/components/workspace/FileExplorer';
+import { applyPatches, isPathWriteable, type FileCommand, type SearchReplacePatch } from '@/lib/syncEngine';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ProjectFile {
   path: string;
@@ -21,6 +23,13 @@ interface ProjectFilesState {
   getFile: (path: string) => ProjectFile | undefined;
   setPreviewHtml: (html: string | null) => void;
   clearFiles: () => void;
+  
+  // Sync Engine actions
+  applyCommand: (cmd: import('@/lib/syncEngine').FileCommand) => void;
+  patchFile: (path: string, patches: import('@/lib/syncEngine').SearchReplacePatch[]) => void;
+  
+  // Persistence action
+  persistFile: (path: string, workspaceId: string) => Promise<void>;
   
   // Build preview from files
   buildPreview: () => string;
@@ -121,6 +130,78 @@ export const useProjectFilesStore = create<ProjectFilesState>((set, get) => ({
     );
     
     set({ files: newFiles, fileTree, selectedFile: null, previewHtml: null });
+  },
+
+  // Sync Engine: Apply a FileCommand directly
+  applyCommand: (cmd: FileCommand) => {
+    const validation = isPathWriteable(cmd.path) ? { valid: true } : { valid: false };
+    if (!validation.valid) {
+      console.warn(`[SyncEngine] Blocked write to protected path: ${cmd.path}`);
+      return;
+    }
+
+    const store = get();
+    switch (cmd.command) {
+      case 'CREATE_FILE':
+      case 'UPDATE_FILE':
+        if (cmd.content) {
+          store.addFile(cmd.path, cmd.content);
+        }
+        break;
+      case 'DELETE_FILE':
+        store.removeFile(cmd.path);
+        break;
+      case 'PATCH_FILE':
+        if (cmd.patches) {
+          store.patchFile(cmd.path, cmd.patches);
+        }
+        break;
+    }
+  },
+
+  // Sync Engine: Apply search-and-replace patches to a file
+  patchFile: (path: string, patches: SearchReplacePatch[]) => {
+    set((state) => {
+      const existing = state.files.get(path);
+      if (!existing) {
+        console.warn(`[SyncEngine] patchFile: file not found: ${path}`);
+        return state;
+      }
+
+      const patched = applyPatches(existing.content, patches);
+      if (patched === null) {
+        console.warn(`[SyncEngine] patchFile: patches failed for ${path}, keeping original`);
+        return state;
+      }
+
+      const newFiles = new Map(state.files);
+      newFiles.set(path, { ...existing, content: patched });
+
+      const fileTree = buildFileTree(
+        Array.from(newFiles.values()).map(f => ({ path: f.path, content: f.content }))
+      );
+
+      return { files: newFiles, fileTree };
+    });
+  },
+
+  // Persistence: Write a single file back to workspace_files
+  persistFile: async (path: string, workspaceId: string) => {
+    const file = get().files.get(path);
+    if (!file) return;
+
+    try {
+      await supabase.from('workspace_files' as any).upsert({
+        workspace_id: workspaceId,
+        file_path: file.path,
+        content: file.content,
+        file_type: file.path.split('.').pop() || 'txt',
+        is_generated: false,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'workspace_id,file_path' } as any);
+    } catch (err) {
+      console.error(`[SyncEngine] Failed to persist ${path}:`, err);
+    }
   },
 
   buildPreview: () => {

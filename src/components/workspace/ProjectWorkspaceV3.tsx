@@ -227,26 +227,8 @@ export default function ProjectWorkspaceV3() {
     }
   }, [latestVersion]);
 
-  // Update preview when generated files come in
-  useEffect(() => {
-    if (generatedFiles.length > 0) {
-      // Add files to store
-      generatedFiles.forEach(f => addFile(f.path, f.content));
-      
-      // Find best entry component and generate preview
-      const entry = pickPreviewEntryFile(generatedFiles.map(f => ({ path: f.path, content: f.content })));
-      if (entry) {
-        // We only have the generated batch here; still inline within this batch.
-        const html = compileWorkspaceEntryToHtml(
-          entry.path,
-          generatedFiles.map((f) => ({ file_path: f.path, content: f.content })),
-        );
-        const fullHtml = generatePreviewHtml(html);
-        setPreviewHtml(fullHtml);
-        setPreviewKey((prev) => prev + 1);
-      }
-    }
-  }, [generatedFiles, addFile, setPreviewHtml, pickPreviewEntryFile]);
+  // Files are now dispatched directly to Zustand store via SSE events in useBuildableAI.
+  // No need for a separate sync effect from generatedFiles.
 
   // NEW: Recompile preview when route changes
   useEffect(() => {
