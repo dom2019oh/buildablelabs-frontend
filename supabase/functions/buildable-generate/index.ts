@@ -4,9 +4,9 @@
 // Converts the blocking pipeline to Server-Sent Events for progressive delivery.
 // Files are streamed as they're generated + saved to DB incrementally.
 
-import { serve } from "jsr:@std/http";
-import { createClient } from "npm:@supabase/supabase-js@2";
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { 
   createPipelineContext, 
