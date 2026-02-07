@@ -1,167 +1,123 @@
 // =============================================================================
-// STAGE 3: ARCHITECTURE PLANNING
+// PLAN STAGE - Architecture Planning with enhanced context
 // =============================================================================
 
-import type { PipelineContext, ArchitecturePlan, StageResult } from "../types";
-import { callAIWithFallback } from "../routing";
+import type { PipelineContext, StageResult, ArchitecturePlan } from "../types";
+import { callAI, getContextLimits, getAvailableProviders, profileRequest } from "../routing";
+import { StageTracer } from "../telemetry";
 
-// =============================================================================
-// ARCHITECT PROMPT
-// =============================================================================
+const PLAN_PROMPT = `You are an architect for a website builder. Create implementation plans.
 
-const ARCHITECT_PROMPT = `You are Buildable's Architect AI — a world-class software architect who creates STUNNING, VISUALLY RICH websites.
-
-## YOUR MISSION:
-Analyze the user's request and create a PRECISE implementation plan with VISUAL EXCELLENCE.
-
-## CRITICAL ANALYSIS:
-1. Identify the EXACT type of website/app needed
-2. List ALL required pages and components
-3. Determine the BEST file structure
-4. Specify exact features for each component
-5. **SELECT RELEVANT UNSPLASH IMAGES** for the niche
-
-## IMAGE STRATEGY:
-- For EVERY project, select 3-8 HIGH-QUALITY Unsplash images
-- Use SPECIFIC photo IDs for consistent, beautiful results
-- Match images to the industry/niche
-
-## CURATED IMAGE LIBRARY BY NICHE:
-- Bakery/Cafe: photo-1509440159596-0249088772ff, photo-1555507036-ab1f4038808a, photo-1517433670267-30f41c41e0fe
-- Restaurant/Food: photo-1517248135467-4c7edcad34c4, photo-1414235077428-338989a2e8c0
-- Fitness/Gym: photo-1534438327276-14e5300c3a48, photo-1571019613454-1cb2f99b2d8b
-- SaaS/Tech: photo-1551288049-bebda4e38f71, photo-1460925895917-afdab827c52f
-- Portfolio/Creative: photo-1558655146-d09347e92766, photo-1561070791-2526d30994b5
-- E-commerce/Shop: photo-1472851294608-062f824d29cc, photo-1441986300917-64674bd600d8
-- Real Estate: photo-1600596542815-ffad4c1539a9, photo-1600585154340-be6161a56a0c
-- Travel/Tourism: photo-1507525428034-b723cf961d3e, photo-1476514525535-07fb3b4ae5f1
-
-## OUTPUT FORMAT (JSON only):
+OUTPUT JSON:
 {
-  "projectType": "landing-page | e-commerce | dashboard | portfolio | blog | saas",
-  "theme": { "primary": "purple", "style": "modern-gradient | minimal | bold | glass" },
-  "pages": [
-    { "path": "src/pages/Index.tsx", "purpose": "Main landing page", "sections": ["hero", "features", "gallery", "cta", "footer"] }
-  ],
-  "components": [
-    { "path": "src/components/layout/Navbar.tsx", "features": ["logo", "nav-links", "mobile-menu", "cta-button"] },
-    { "path": "src/components/Hero.tsx", "features": ["hero-image", "gradient-overlay", "headline", "cta-buttons"] }
-  ],
-  "routes": ["/", "/about", "/contact"],
-  "images": [
-    { "usage": "hero-bg", "url": "https://images.unsplash.com/photo-XXXXX?w=1920&q=80" }
-  ],
-  "specialInstructions": "Any specific styling or feature notes"
+  "projectType": "landing-page|portfolio|ecommerce|saas",
+  "theme": {"primary":"purple","style":"modern"},
+  "pages": [{"path":"src/pages/Index.tsx","purpose":"Main page"}],
+  "components": [{"path":"src/components/Hero.tsx","features":["image","gradient"]}],
+  "routes": ["/"],
+  "images": [{"usage":"hero","url":"https://images.unsplash.com/photo-XXX?w=1920&q=80"}]
 }
 
+IMAGE IDS BY NICHE:
+- Bakery: photo-1509440159596-0249088772ff, photo-1555507036-ab1f4038808a
+- Cafe: photo-1495474472287-4d71bcdd2085
+- Restaurant: photo-1517248135467-4c7edcad34c4, photo-1414235077428-338989a2e8c0
+- Fitness: photo-1534438327276-14e5300c3a48, photo-1571019613454-1cb2f99b2d8b
+- Tech/SaaS: photo-1551288049-bebda4e38f71, photo-1460925895917-afdab827c52f
+- E-commerce: photo-1472851294608-062f824d29cc, photo-1441986300917-64674bd600d8
+- Portfolio: photo-1558655146-d09347e92766, photo-1561070791-2526d30994b5
+- Real Estate: photo-1600596542815-ffad4c1539a9, photo-1600585154340-be6161a56a0c
+- Travel: photo-1507525428034-b723cf961d3e, photo-1476514525535-07fb3b4ae5f1
+
+Always include: Navbar, Hero, Features, Gallery, Testimonials, CTA, Footer.
 Return ONLY valid JSON.`;
 
-// =============================================================================
-// EXECUTE PLAN STAGE
-// =============================================================================
+export async function executePlanStage(ctx: PipelineContext): Promise<StageResult<ArchitecturePlan>> {
+  const start = Date.now();
+  const tracer = new StageTracer(ctx);
+  tracer.stageStart("plan");
 
-export async function executePlanStage(context: PipelineContext): Promise<StageResult<ArchitecturePlan>> {
-  const startTime = Date.now();
+  // Use provider-aware context limits for existing files
+  const available = getAvailableProviders();
+  const planningProvider = available.includes("gemini") ? "gemini" : available[0] || "grok";
+  const limits = getContextLimits(planningProvider as any);
+
+  let existingContext: string;
+  if (ctx.existingFiles.length > 0) {
+    const filesToShow = ctx.existingFiles.slice(0, limits.maxFiles);
+    existingContext = filesToShow
+      .map(f => `${f.path} (${f.content.slice(0, limits.maxCharsPerFile).length} chars)`)
+      .join(", ");
+    
+    if (ctx.existingFiles.length > limits.maxFiles) {
+      existingContext += ` ... and ${ctx.existingFiles.length - limits.maxFiles} more`;
+    }
+  } else {
+    existingContext = "None (new project)";
+  }
+
+  // Profile request for smart routing
+  const profile = profileRequest(
+    ctx.originalPrompt,
+    ctx.existingFiles.map(f => ({ path: f.path, content: f.content })),
+  );
 
   try {
-    const existingFilesList = context.existingFiles.length > 0
-      ? context.existingFiles.map(f => f.path).join(", ")
-      : "None - NEW PROJECT";
+    const result = await callAI("planning", [
+      { role: "system", content: PLAN_PROMPT },
+      { role: "user", content: `Request: "${ctx.originalPrompt}"\nExisting: ${existingContext}\n\nCreate plan.` },
+    ], { temperature: 0.3, maxTokens: 4000, profile });
 
-    const messages = [
-      { role: "system", content: ARCHITECT_PROMPT },
-      { 
-        role: "user", 
-        content: `User wants: "${context.originalPrompt}"\n\nExisting files: ${existingFilesList}\n\nCreate the architecture plan.` 
-      },
-    ];
+    tracer.modelCall(result.provider, result.model, "planning", result.latencyMs, result.tokensUsed);
 
-    const result = await callAIWithFallback("planning", messages);
-    context.modelsUsed.push(`Plan: ${result.provider}/${result.model}`);
-
-    // Parse JSON from response
-    const jsonMatch = result.response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const plan = JSON.parse(jsonMatch[0]) as ArchitecturePlan;
-      
-      // Ensure required fields
+    const match = result.content.match(/\{[\s\S]*\}/);
+    if (match) {
+      const plan = JSON.parse(match[0]) as ArchitecturePlan;
       plan.projectType = plan.projectType || "landing-page";
-      plan.theme = plan.theme || { primary: "purple", style: "modern-gradient" };
+      plan.theme = plan.theme || { primary: "purple", style: "modern" };
       plan.pages = plan.pages || [];
       plan.components = plan.components || [];
       plan.routes = plan.routes || ["/"];
       plan.images = plan.images || [];
 
-      return {
-        success: true,
-        data: plan,
-        duration: Date.now() - startTime,
-        modelUsed: `${result.provider}/${result.model}`,
-      };
+      tracer.stageComplete("plan", true, Date.now() - start, {});
+      return { success: true, data: plan, duration: Date.now() - start, canRetry: true };
     }
 
-    throw new Error("No valid JSON in response");
-
-  } catch (error) {
-    console.warn("[Plan] AI planning failed, using defaults:", error);
-    
-    return {
-      success: true,
-      data: generateDefaultPlan(context.originalPrompt),
-      duration: Date.now() - startTime,
-    };
+    throw new Error("No JSON in response");
+  } catch (e) {
+    const plan = getDefaultPlan(ctx.originalPrompt);
+    tracer.stageComplete("plan", true, Date.now() - start, { metadata: { fallback: true } });
+    return { success: true, data: plan, duration: Date.now() - start, canRetry: false };
   }
 }
 
-// =============================================================================
-// DEFAULT PLAN GENERATOR
-// =============================================================================
-
-export function generateDefaultPlan(prompt: string): ArchitecturePlan {
+function getDefaultPlan(prompt: string): ArchitecturePlan {
   const p = prompt.toLowerCase();
-  
-  // Detect niche
-  let nicheType = "default";
-  let heroImage = "photo-1557683316-973673baf926";
-  
-  if (p.includes("bakery") || p.includes("bread") || p.includes("pastry")) {
-    nicheType = "bakery";
-    heroImage = "photo-1509440159596-0249088772ff";
-  } else if (p.includes("restaurant") || p.includes("food") || p.includes("cafe")) {
-    nicheType = "restaurant";
-    heroImage = "photo-1517248135467-4c7edcad34c4";
-  } else if (p.includes("fitness") || p.includes("gym")) {
-    nicheType = "fitness";
-    heroImage = "photo-1534438327276-14e5300c3a48";
-  } else if (p.includes("tech") || p.includes("saas") || p.includes("software")) {
-    nicheType = "tech";
-    heroImage = "photo-1551288049-bebda4e38f71";
-  } else if (p.includes("shop") || p.includes("store") || p.includes("ecommerce")) {
-    nicheType = "ecommerce";
-    heroImage = "photo-1472851294608-062f824d29cc";
-  } else if (p.includes("portfolio") || p.includes("creative")) {
-    nicheType = "portfolio";
-    heroImage = "photo-1558655146-d09347e92766";
-  }
+  let img = "photo-1557683316-973673baf926";
+  if (p.includes("bakery")) img = "photo-1509440159596-0249088772ff";
+  else if (p.includes("restaurant")) img = "photo-1517248135467-4c7edcad34c4";
+  else if (p.includes("fitness")) img = "photo-1534438327276-14e5300c3a48";
+  else if (p.includes("tech") || p.includes("saas")) img = "photo-1551288049-bebda4e38f71";
+  else if (p.includes("shop")) img = "photo-1472851294608-062f824d29cc";
+  else if (p.includes("portfolio")) img = "photo-1558655146-d09347e92766";
+  else if (p.includes("real estate")) img = "photo-1600596542815-ffad4c1539a9";
+  else if (p.includes("travel")) img = "photo-1507525428034-b723cf961d3e";
 
   return {
-    projectType: nicheType === "portfolio" ? "portfolio" : "landing-page",
-    theme: { primary: "purple", style: "modern-gradient" },
-    pages: [
-      { path: "src/pages/Index.tsx", purpose: "Main landing page", sections: ["hero", "features", "gallery", "cta", "footer"] },
-    ],
+    projectType: "landing-page",
+    theme: { primary: "purple", style: "modern" },
+    pages: [{ path: "src/pages/Index.tsx", purpose: "Main" }],
     components: [
-      { path: "src/components/layout/Navbar.tsx", features: ["logo", "nav-links", "mobile-menu", "cta-button"] },
-      { path: "src/components/Hero.tsx", features: ["hero-image", "gradient-overlay", "headline", "cta-buttons"] },
-      { path: "src/components/Features.tsx", features: ["icon-cards", "grid-layout", "descriptions"] },
-      { path: "src/components/Gallery.tsx", features: ["image-grid", "hover-effects", "modal-view"] },
-      { path: "src/components/CTA.tsx", features: ["gradient-bg", "headline", "action-buttons"] },
-      { path: "src/components/layout/Footer.tsx", features: ["links", "social-icons", "copyright"] },
+      { path: "src/components/layout/Navbar.tsx", features: ["logo", "menu"] },
+      { path: "src/components/Hero.tsx", features: ["image", "gradient"] },
+      { path: "src/components/Features.tsx", features: ["cards"] },
+      { path: "src/components/Gallery.tsx", features: ["grid"] },
+      { path: "src/components/Testimonials.tsx", features: ["cards"] },
+      { path: "src/components/CTA.tsx", features: ["gradient"] },
+      { path: "src/components/layout/Footer.tsx", features: ["links"] },
     ],
     routes: ["/"],
-    images: [
-      { usage: "hero-bg", url: `https://images.unsplash.com/${heroImage}?w=1920&q=80` },
-    ],
-    specialInstructions: `Create a modern ${nicheType} website with stunning visuals`,
+    images: [{ usage: "hero", url: `https://images.unsplash.com/${img}?w=1920&q=80` }],
   };
 }
