@@ -1,180 +1,160 @@
 
 
-# Sync Engine Implementation Plan
+# Gemini 3 Deep Integration Plan
 
-## Problem Summary
+## Current State
 
-The current architecture has a fundamental gap between the AI's text output and the application's internal state management. Today, the backend runs a blocking 8-stage pipeline that returns a single JSON payload when *everything* is done. The frontend then relies on Supabase Realtime events to see files appear, but there is no structured command protocol, no incremental file delivery, and no diffing engine. The result: the user stares at a loading state for the entire pipeline duration with no progressive feedback, and the system replaces entire files even for 1-line changes.
+Your platform already has Gemini integrated, but in a limited way:
+- The `buildable-generate` pipeline uses `gemini-2.0-flash` only for intent classification and planning
+- Code generation is routed exclusively to Grok (with OpenAI fallback)
+- The `ai-chat` function uses older Gemini 2.5 models via Lovable AI Gateway
+- Your `GEMINI_API_KEY` is already configured and working
 
-This plan implements the 6 core improvements from the Gemini analysis, adapted to the existing Buildable architecture.
+## What Changes
 
----
-
-## Phase 1: Command Protocol (Structured "File Packets")
-
-**What changes:** Instead of the AI returning freeform markdown with code blocks, the pipeline will wrap every file change in a structured JSON command.
-
-**Backend (`buildable-generate/pipeline/`):**
-- Define a `FileCommand` type in `types.ts`:
-  ```
-  type CommandType = "CREATE_FILE" | "UPDATE_FILE" | "DELETE_FILE" | "PATCH_FILE"
-  
-  interface FileCommand {
-    command: CommandType
-    path: string
-    content?: string        // full content for CREATE/UPDATE
-    patches?: SearchReplacePatch[]  // for PATCH_FILE
-    metadata?: { language, purpose }
-  }
-  ```
-- Update `stages/generate.ts` to emit `FileCommand[]` instead of raw `FileOperation[]`
-- Update the pipeline result type to include `commands: FileCommand[]`
-
-**Frontend (`stores/projectFilesStore.ts`):**
-- Add a `applyCommand(cmd: FileCommand)` action to the Zustand store that switches on `cmd.command` to route to `addFile`, `updateFile`, `removeFile`, or the new `patchFile`
+Upgrade the entire AI pipeline to leverage Gemini 3's superior coding capabilities alongside your existing Grok and OpenAI providers.
 
 ---
 
-## Phase 2: Streaming File Delivery (SSE Pipeline)
+## Phase 1: Upgrade Gemini Model Registry
 
-**What changes:** Convert the `buildable-generate` edge function from a blocking JSON response to an SSE stream that emits structured events as each pipeline stage completes.
+Update the model definitions in the `buildable-generate` routing layer to include Gemini 3 models.
 
-**Backend (`buildable-generate/index.ts`):**
-- Change the response to `Content-Type: text/event-stream`
-- Emit events progressively:
-  ```
-  data: {"type":"stage","stage":"intent","status":"complete"}
-  data: {"type":"stage","stage":"plan","status":"complete","data":{...}}
-  data: {"type":"file","command":"CREATE_FILE","path":"src/components/Hero.tsx","content":"..."}
-  data: {"type":"file","command":"CREATE_FILE","path":"src/components/Navbar.tsx","content":"..."}
-  data: {"type":"stage","stage":"validate","status":"complete","score":0.95}
-  data: {"type":"complete","filesGenerated":7,"aiMessage":"..."}
-  ```
-- Each file is emitted and saved to the database *as it's parsed* from the AI response, not after the entire pipeline finishes
+**File: `supabase/functions/buildable-generate/pipeline/routing.ts`**
 
-**Frontend (`hooks/useBuildableAI.ts`):**
-- The existing SSE parsing code (lines 279-370) is already written but currently unused because the backend returns JSON. This plan activates it.
-- Modify the SSE handler to recognize `type: "file"` events and immediately call `applyCommand()` on the Zustand store
-- Modify the SSE handler to recognize `type: "stage"` events and update the `phase` state with real progress (e.g., "Planning...", "Generating files...", "Validating...")
-- Remove the JSON fallback path once streaming is stable
-
----
-
-## Phase 3: Recursive Tree Resolver
-
-**What changes:** Harden the file tree builder to safely handle deeply nested paths and auto-create missing intermediate folders.
-
-**Frontend (`components/workspace/FileExplorer.tsx`):**
-- The existing `buildFileTree()` function already walks paths and creates folder nodes. This phase adds:
-  - Deduplication guard (prevent double-insertion of same path)
-  - Sorting stability (folders first, then alphabetical)
-  - A `resolveOrCreatePath(tree, segments)` helper that the store can call directly to ensure parent folders exist before placing a file
-
-**Frontend (`stores/projectFilesStore.ts`):**
-- When `addFile` or `applyCommand` is called, run the path through the resolver before inserting
-
----
-
-## Phase 4: Search-and-Replace Diffing Engine
-
-**What changes:** For modifications to existing files, instead of sending the entire file back, the AI can emit "patches" that surgically replace specific sections.
-
-**New types in `types.ts`:**
+Current Gemini config:
 ```
-interface SearchReplacePatch {
-  search: string    // exact text to find
-  replace: string   // replacement text
-  context?: string  // optional surrounding context for disambiguation
+gemini: {
+  models: {
+    pro: "gemini-2.0-flash",
+    flash: "gemini-2.0-flash",
+    planning: "gemini-2.0-flash",
+  },
+  maxTokens: 16000,
 }
 ```
 
-**Backend (`pipeline/core-directive.ts`):**
-- Add a new instruction block to the system prompt for modification requests:
-  ```
-  When MODIFYING existing files, use PATCH format:
-  [PATCH:src/components/Hero.tsx]
-  <<<< SEARCH
-  <h1 className="text-4xl">Old Title</h1>
-  ====
-  <h1 className="text-4xl">New Title</h1>
-  >>>> REPLACE
-  ```
-- Only used for `modify` intent types; new projects still use full file creation
+Updated to:
+```
+gemini: {
+  models: {
+    pro: "gemini-2.5-pro",
+    flash: "gemini-2.5-flash",
+    planning: "gemini-2.5-pro",
+    code: "gemini-2.5-pro",
+  },
+  maxTokens: 65000,
+}
+```
 
-**Backend (`stages/generate.ts`):**
-- Add a `extractPatches()` parser alongside the existing `extractFiles()` function
-- When patches are found, emit `PATCH_FILE` commands instead of `UPDATE_FILE`
-
-**Frontend (`stores/projectFilesStore.ts`):**
-- Add a `patchFile(path, patches)` action that:
-  1. Gets the current file content from the Map
-  2. Applies each search/replace patch sequentially
-  3. Updates the file in the store
-  4. Rebuilds the preview
+Key changes:
+- `gemini-2.5-pro` for planning, architecture, and code generation (2M context window)
+- `gemini-2.5-flash` for fast intent classification and validation
+- Increase `maxTokens` from 16,000 to 65,000 (Gemini supports up to 65K output)
 
 ---
 
-## Phase 5: Single Source of Truth
+## Phase 2: Add Gemini as a Code Generation Provider
 
-**What changes:** Eliminate the dual-source conflict between "streaming text content" and "database files." The Zustand file store becomes the *only* truth.
+Update the task routing matrix to make Gemini a viable coding provider, not just a planner.
 
-**Frontend (`hooks/useBuildableAI.ts`):**
-- Stop maintaining a separate `generatedFiles` array in the hook state
-- Instead, as SSE file events arrive, apply them directly to the Zustand store
-- The hook's role becomes: manage the stream connection, parse events, and dispatch commands to the store
+**File: `supabase/functions/buildable-generate/pipeline/routing.ts`**
 
-**Frontend (`components/workspace/ProjectWorkspaceV3.tsx`):**
-- Remove the `useEffect` that syncs `generatedFiles` from the AI hook into the store (lines 231-249) - this becomes unnecessary since files go directly into the store via commands
-- The workspace reads *only* from the Zustand store for its file tree, editor, and preview
-- On page load, hydrate the store from `workspace_files` in the database (already done via `useWorkspace`)
+Changes to `TASK_ROUTING`:
+- `coding`: Add Gemini as the fallback instead of OpenAI (Grok remains primary)
+- `validation`: Add Gemini as a fallback option
+- `repair`: Add Gemini as a secondary fallback
+- Add a new `"code"` model key to the Gemini models map so the routing can resolve it
 
-**Context injection for AI:**
-- Before each generation request, automatically build a "File Tree Summary" from the Zustand store's current state and inject it into the conversation history as a system message
-- This ensures the AI always works with the latest code state, not what was discussed 10 messages ago
+This means the fallback chain for coding becomes: **Grok -> Gemini -> OpenAI** (three-deep resilience).
 
 ---
 
-## Phase 6: Persistence Bridge (Database Sync)
+## Phase 3: Upgrade ai-chat Pipeline Models
 
-**What changes:** Ensure the Zustand store and Supabase `workspace_files` table stay in lockstep.
+Update the `ai-chat` edge function to use the latest available models through the Lovable AI Gateway.
 
-**Current flow (no change needed for writes):** The backend already writes to `workspace_files` via `saveFilesToDatabase()`. Supabase Realtime already notifies the frontend.
+**File: `supabase/functions/ai-chat/index.ts`**
 
-**Improvement: Optimistic updates:**
-- When a file command arrives via SSE, apply it to the Zustand store *immediately* (optimistic)
-- The Realtime subscription from `useWorkspace` will confirm the database write shortly after
-- If the Realtime event shows a different version, reconcile by preferring the database version
+Update the MODELS constant:
+```
+const MODELS = {
+  architect: "google/gemini-2.5-pro",
+  code: "google/gemini-2.5-pro",
+  validate: "google/gemini-2.5-flash",
+  ui: "google/gemini-3-flash-preview",
+  fast: "google/gemini-2.5-flash",
+};
+```
 
-**Improvement: Manual edit persistence:**
-- When the user manually edits a file in the Code editor and saves, write the change back to `workspace_files` via a direct Supabase upsert
-- This is partially implemented in `handleFileSave` but currently only updates the local store
+These are already close to optimal; the main change is ensuring `ui` uses the latest preview model for design-oriented tasks.
+
+**File: `supabase/functions/ai-chat/pipeline.ts`**
+
+Same model updates for consistency.
+
+---
+
+## Phase 4: Increase Context Window Usage
+
+Gemini's biggest advantage is its massive context window (up to 2M tokens for Pro). Update the pipeline to send more existing file context when Gemini is the active provider.
+
+**File: `supabase/functions/buildable-generate/pipeline/stages/generate.ts`**
+
+Current behavior: Only sends 5 existing files, each truncated to 1,000 characters.
+
+Updated behavior:
+- When the active provider is Gemini, send up to 15 existing files with 3,000 characters each
+- For Grok/OpenAI, keep the current limits (smaller context windows)
+
+**File: `supabase/functions/buildable-generate/pipeline/stages/plan.ts`**
+
+- Increase the context sent to the planner since Gemini Pro can handle it
+
+---
+
+## Phase 5: Smart Provider Selection
+
+Add intelligence to pick the best provider based on the complexity of the request, not just a static routing table.
+
+**File: `supabase/functions/buildable-generate/pipeline/routing.ts`**
+
+Add a `selectBestProvider` function that considers:
+- Prompt length (long prompts favor Gemini's large context)
+- Number of existing files (more files = Gemini's context window advantage)
+- Task complexity (simple changes can use Flash, complex ones use Pro)
+
+This doesn't replace the static routing -- it enhances the `buildProviderChain` function to dynamically adjust priority based on the actual request.
 
 ---
 
 ## Technical Details
 
-### Files to Create
-1. `src/lib/syncEngine.ts` - Core sync engine: command types, `applyCommand()`, `applyPatch()`, file tree resolver, context summary builder
-
 ### Files to Modify
-1. `supabase/functions/buildable-generate/pipeline/types.ts` - Add `FileCommand`, `SearchReplacePatch` types
-2. `supabase/functions/buildable-generate/index.ts` - Convert to SSE streaming response
-3. `supabase/functions/buildable-generate/pipeline/index.ts` - Emit file commands progressively via callback
-4. `supabase/functions/buildable-generate/pipeline/stages/generate.ts` - Add patch extraction for modifications
-5. `supabase/functions/buildable-generate/pipeline/core-directive.ts` - Add PATCH format instructions to system prompt
-6. `src/stores/projectFilesStore.ts` - Add `applyCommand()`, `patchFile()`, improve tree resolver
-7. `src/hooks/useBuildableAI.ts` - Activate SSE path, dispatch commands directly to store
-8. `src/components/workspace/ProjectWorkspaceV3.tsx` - Remove redundant sync effects, read only from store
 
-### Migration Strategy
-- Phase 1-2 can be implemented together (command protocol + streaming)
-- Phase 3 is a standalone hardening improvement
-- Phase 4 (diffing) can be added incrementally after the core streaming works
-- Phase 5-6 are cleanup/optimization after the streaming pipeline is live
-- The JSON fallback path in `useBuildableAI.ts` should be kept temporarily during rollout, controlled by a feature flag or content-type check (which already exists)
+1. `supabase/functions/buildable-generate/pipeline/routing.ts` -- Upgrade Gemini models, update routing matrix, add smart provider selection
+2. `supabase/functions/buildable-generate/pipeline/stages/generate.ts` -- Increase context limits for Gemini
+3. `supabase/functions/buildable-generate/pipeline/stages/plan.ts` -- Increase context for planning
+4. `supabase/functions/ai-chat/index.ts` -- Update model constants
+5. `supabase/functions/ai-chat/pipeline.ts` -- Update model constants
+
+### No New Files Required
+
+All changes are upgrades to existing infrastructure.
+
+### No New API Keys Required
+
+Your `GEMINI_API_KEY` is already configured and working. The Gemini API supports all `gemini-2.5-*` models with the same key through the OpenAI-compatible endpoint that's already in use.
+
+### Deployment
+
+Both edge functions (`buildable-generate` and `ai-chat`) will be redeployed after changes. No database migrations needed.
 
 ### Risk Mitigations
-- Keep the existing JSON response path as fallback if SSE stream fails
-- Patches that fail to match (search string not found) fall back to full file replacement
-- The Zustand store's `applyCommand` validates paths before writing (reuses existing `isPathWriteable` logic)
-- Maximum patch size limit prevents memory issues
+
+- The fallback chain ensures that if Gemini 2.5 models are unavailable or return errors, the system falls back to Grok and then OpenAI
+- The confidence scoring system already validates response quality regardless of which provider generated it
+- Model name changes are backward-compatible with the OpenAI-compatible API endpoint
+
+I also want ALL AIs to be used, regardless of the task, if they all work together, the results will be much better. I also want the Live Preview to actually work. Do what you have to do to make it work. You are Lovable, aren't you the best there is? Or will Buildable AI pass you?
+
