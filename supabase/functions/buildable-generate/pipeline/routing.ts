@@ -33,10 +33,10 @@ export const AI_PROVIDERS: Record<ProviderKey, ModelConfig> = {
     models: {
       pro: "gemini-2.5-pro",
       flash: "gemini-2.5-flash",
-      planning: "gemini-2.5-pro",
-      code: "gemini-2.5-pro",
+      planning: "gemini-2.5-flash",
+      code: "gemini-2.5-flash",
     },
-    maxTokens: 65000,
+    maxTokens: 16000,
   },
   openai: {
     name: "OpenAI",
@@ -406,7 +406,8 @@ export function getContextLimits(provider: ProviderKey): { maxFiles: number; max
 // TIMEOUT HELPER (Edge functions have ~60s limit)
 // =============================================================================
 
-const AI_CALL_TIMEOUT_MS = 25_000; // 25 seconds max per AI call
+const AI_CALL_TIMEOUT_MS = 25_000; // 25 seconds for non-coding tasks
+const AI_CODING_TIMEOUT_MS = 50_000; // 50 seconds for code generation (largest task)
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = AI_CALL_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -467,6 +468,8 @@ export async function callAI(
         "Authorization": `Bearer ${apiKey}`,
       };
 
+      // Use longer timeout for coding tasks
+      const timeout = task === "coding" ? AI_CODING_TIMEOUT_MS : AI_CALL_TIMEOUT_MS;
       const response = await fetchWithTimeout(config.baseUrl, {
         method: "POST",
         headers,
@@ -477,7 +480,7 @@ export async function callAI(
           temperature: options.temperature ?? 0.5,
           stream: options.stream ?? false,
         }),
-      });
+      }, timeout);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -512,7 +515,8 @@ export async function callAI(
         usedFallback: attemptIndex > 0,
       };
     } catch (error) {
-      const errMsg = (error as Error).name === "AbortError" ? "Timeout (25s)" : String(error);
+      const timeoutLabel = task === "coding" ? "50s" : "25s";
+      const errMsg = (error as Error).name === "AbortError" ? `Timeout (${timeoutLabel})` : String(error);
       console.log(`[Router] ${config.name} error: ${errMsg}`);
       lastError = error instanceof Error ? error : new Error(String(error));
       attemptIndex++;
@@ -588,7 +592,7 @@ export async function callAIEnsemble(
           temperature: options.temperature ?? 0.5,
           stream: false,
         }),
-      });
+      }, AI_CODING_TIMEOUT_MS); // Use coding timeout (50s) for ensemble
 
       if (!response.ok) {
         const errText = await response.text().catch(() => "");
@@ -614,7 +618,7 @@ export async function callAIEnsemble(
         codeBlockCount: quality.codeBlockCount,
       } as AICallResult & { codeBlockCount: number };
     } catch (err) {
-      const errMsg = (err as Error).name === "AbortError" ? "Timeout (25s)" : String(err);
+      const errMsg = (err as Error).name === "AbortError" ? "Timeout (50s)" : String(err);
       console.log(`[Ensemble] ${config.name} error: ${errMsg}`);
       return null;
     }

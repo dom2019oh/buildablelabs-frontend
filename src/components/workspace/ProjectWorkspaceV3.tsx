@@ -26,6 +26,7 @@ import CodeViewer from './CodeViewer';
 import VersionHistoryPanel from './VersionHistoryPanel';
 import VersionHistoryView from './VersionHistoryView';
 import ThinkingIndicatorV2 from './ThinkingIndicatorV2';
+import PipelineProgressBar from './PipelineProgressBar';
 import PreviewShowcase from './PreviewShowcase';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -69,6 +70,7 @@ export default function ProjectWorkspaceV3() {
     generate,
     cancel,
     error: aiError,
+    filesDelivered,
   } = useBuildableAI(projectId);
   
   // Version history
@@ -692,41 +694,26 @@ export default function ProjectWorkspaceV3() {
             /* Preview Panel */
             <div className="flex-1 h-full flex flex-col bg-zinc-900">
               {/* Preview Header - Minimal */}
-              <div className="h-10 flex items-center justify-between px-3 border-b border-zinc-800">
+                <div className="h-10 flex items-center justify-between px-3 border-b border-zinc-800">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Preview</span>
                 </div>
-                
-                {/* Generation Status - Simple inline */}
-                {isGenerating && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Loader2 className="h-3 w-3" />
-                    </motion.div>
-                    <span>Building...</span>
-                  </div>
-                )}
               </div>
               
+              {/* Pipeline Progress Bar - Shows during generation */}
+              {isGenerating && (
+                <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-900/95">
+                  <PipelineProgressBar
+                    phase={phase}
+                    isVisible={true}
+                    filesDelivered={filesDelivered}
+                  />
+                </div>
+              )}
+
               {/* Preview Content */}
               <div className="flex-1 overflow-hidden relative">
-                {/* Simple Thinking Indicator - Bottom overlay */}
-                {isGenerating && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-                    <div className="bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-2xl shadow-lg px-4 py-2">
-                      <ThinkingIndicatorV2 
-                        isVisible={true}
-                        taskType="generation"
-                        currentActions={currentActions}
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* Priority: 1) Preview HTML if available, 2) PreviewShowcase for empty state */}
                 {previewHtml ? (
                   <iframe
