@@ -48,7 +48,7 @@ export default function Navbar() {
         <Link to="/" className="flex items-center gap-2">
           <img src={buildableLogo} alt="Buildable" className="h-14 w-14 object-contain" />
           <span className="text-base font-bold tracking-tight text-primary-foreground" style={{
-          fontFamily: "'Space Grotesk', sans-serif"
+          fontFamily: "'Funnel Display', sans-serif"
         }}>Buildable</span>
         </Link>
 

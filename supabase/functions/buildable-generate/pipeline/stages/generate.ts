@@ -1,41 +1,41 @@
 // =============================================================================
-// GENERATE STAGE - Code Generation with ensemble AI collaboration
+// GENERATE STAGE - Code Generation with full Core Directive + ensemble AI
 // =============================================================================
 
 import type { PipelineContext, StageResult, FileOperation, ArchitecturePlan } from "../types.ts";
 import { callAI, callAIEnsemble, getContextLimits, getAvailableProviders, profileRequest } from "../routing.ts";
 import { StageTracer } from "../telemetry.ts";
+import { CODE_QUALITY_RULES, VISUAL_STANDARDS, FULL_STACK_DIRECTIVE, IMAGE_LIBRARY, FORBIDDEN_PATTERNS } from "../core-directive.ts";
 
 // =============================================================================
-// CODER PROMPT (Compact)
+// CODER PROMPT — Uses full Core Directive sections for maximum quality
 // =============================================================================
 
-const CODER_PROMPT = `You are an ELITE React developer creating PRODUCTION-READY websites.
+const CODER_SYSTEM_PROMPT = `You are BUILDABLE — an ELITE React developer creating PRODUCTION-READY websites.
+You generate complete, deployable code. Every file is real, functional, and visually stunning.
 
-RULES:
-1. Generate 10-15 complete files for new projects
-2. Every hero has Unsplash image + gradient overlay
-3. Include: Gallery, Testimonials, CTA, Footer
-4. Mobile hamburger menu required
-5. Hover effects on all interactive elements
-6. NO placeholders, NO TODOs, NO incomplete code
+${CODE_QUALITY_RULES}
 
-CRITICAL JSX:
-- {x ? <A/> : <B/>} - complete ternaries
-- {x && (<div>...</div>)} - closed conditionals
-- All imports at top
+${VISUAL_STANDARDS}
 
-PATTERNS:
-Hero: <section className="relative min-h-screen"><img src="unsplash..." className="absolute inset-0 w-full h-full object-cover"/><div className="absolute inset-0 bg-gradient-to-r from-black/80 to-black/40"/>...</section>
-Gradient text: <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
-Glass card: <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl">
+${FULL_STACK_DIRECTIVE}
 
-FILE FORMAT:
-\`\`\`tsx:src/path/File.tsx
-// complete code
+${IMAGE_LIBRARY}
+
+${FORBIDDEN_PATTERNS}
+
+## OUTPUT FORMAT
+
+All generated code MUST use this exact format with the file path after the language tag:
+
+\`\`\`tsx:src/path/to/Component.tsx
+// Complete, production-ready code here
 \`\`\`
 
-Generate ALL files. COMPLETE CODE ONLY.`;
+Generate ALL files listed in the plan. COMPLETE CODE ONLY. No placeholders, no TODOs.
+Every hero section has a full-bleed Unsplash image + gradient overlay.
+Every project includes: Navbar (with mobile menu), Hero, Features, Gallery, Testimonials, CTA, Footer.
+Minimum 10 files for new projects.`;
 
 // =============================================================================
 // FILE EXTRACTION
@@ -105,7 +105,7 @@ export async function executeGenerateStage(ctx: PipelineContext): Promise<StageR
 
   // Build context with provider-aware limits
   const fileContext = buildExistingFilesContext(ctx.existingFiles);
-  const prompt = CODER_PROMPT + fileContext;
+  const prompt = CODER_SYSTEM_PROMPT + fileContext;
 
   // Profile the request for smart routing
   const profile = profileRequest(

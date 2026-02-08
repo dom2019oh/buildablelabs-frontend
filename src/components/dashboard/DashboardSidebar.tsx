@@ -37,7 +37,7 @@ export default function DashboardSidebar() {
       <div className="p-5 border-b border-sidebar-border">
         <Link to="/dashboard" className="flex items-center gap-3">
           <img src={buildableLogo} alt="Buildable" className="h-8 w-8" />
-          <span className="font-bold text-lg" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          <span className="font-bold text-lg" style={{ fontFamily: "'Funnel Display', sans-serif" }}>
             Buildable
           </span>
         </Link>
