@@ -1,160 +1,150 @@
 
 
-# Gemini 3 Deep Integration Plan
+# Upgrade AI Generation Quality, Library Integration, and Page Completion
 
-## Current State
+## Overview
 
-Your platform already has Gemini integrated, but in a limited way:
-- The `buildable-generate` pipeline uses `gemini-2.0-flash` only for intent classification and planning
-- Code generation is routed exclusively to Grok (with OpenAI fallback)
-- The `ai-chat` function uses older Gemini 2.5 models via Lovable AI Gateway
-- Your `GEMINI_API_KEY` is already configured and working
-
-## What Changes
-
-Upgrade the entire AI pipeline to leverage Gemini 3's superior coding capabilities alongside your existing Grok and OpenAI providers.
+This plan addresses three core issues with the AI generation system:
+1. **Design quality** -- Generated designs need to be more visually polished and creative
+2. **Library integration** -- Users should be able to request backgrounds, components, and templates by name and have them injected automatically
+3. **Page completeness** -- The AI must finish what it starts (no half-built pages)
 
 ---
 
-## Phase 1: Upgrade Gemini Model Registry
+## Problem Analysis
 
-Update the model definitions in the `buildable-generate` routing layer to include Gemini 3 models.
+From exploring the codebase, here are the root causes:
 
-**File: `supabase/functions/buildable-generate/pipeline/routing.ts`**
+**Design Quality Issues:**
+- The `CODER_SYSTEM_PROMPT` includes the core directive sections, but the actual generation prompt sent to the AI model is very compact and lacks specificity on modern design patterns (animations, spacing, typography hierarchy, micro-interactions)
+- The hardcoded template fallbacks (hero, features, gallery, etc.) are basic and use minimal styling
+- Polish Score threshold is set to 70 but the scoring system only gives points for basic things (gradients, hover, images) -- it doesn't check for spacing, typography, or visual hierarchy
 
-Current Gemini config:
-```
-gemini: {
-  models: {
-    pro: "gemini-2.0-flash",
-    flash: "gemini-2.0-flash",
-    planning: "gemini-2.0-flash",
-  },
-  maxTokens: 16000,
-}
-```
+**Library Integration Issues:**
+- The three libraries exist in the frontend (`component-library.ts`, `background-library.ts`, `page-library.ts`) but the backend pipeline has **zero awareness** of them
+- The intent stage doesn't detect library references like "use the Ocean Blue background" or "add the Glass Navbar"
+- There's no mechanism to look up a library item by name and inject its code into the generation context
 
-Updated to:
-```
-gemini: {
-  models: {
-    pro: "gemini-2.5-pro",
-    flash: "gemini-2.5-flash",
-    planning: "gemini-2.5-pro",
-    code: "gemini-2.5-pro",
-  },
-  maxTokens: 65000,
-}
-```
-
-Key changes:
-- `gemini-2.5-pro` for planning, architecture, and code generation (2M context window)
-- `gemini-2.5-flash` for fast intent classification and validation
-- Increase `maxTokens` from 16,000 to 65,000 (Gemini supports up to 65K output)
+**Page Completeness Issues:**
+- The validation system only checks for syntax errors (braces, parentheses, imports) -- it doesn't verify that all planned components/sections are actually present in the output
+- When the AI produces 5 files instead of the planned 10, there's no enforcement loop
+- The repair system only fixes syntax, not missing content
 
 ---
 
-## Phase 2: Add Gemini as a Code Generation Provider
+## Implementation Plan
 
-Update the task routing matrix to make Gemini a viable coding provider, not just a planner.
+### Part 1: Inject Library Awareness into the Backend Pipeline
 
-**File: `supabase/functions/buildable-generate/pipeline/routing.ts`**
+**File: `supabase/functions/buildable-generate/pipeline/libraries.ts` (NEW)**
 
-Changes to `TASK_ROUTING`:
-- `coding`: Add Gemini as the fallback instead of OpenAI (Grok remains primary)
-- `validation`: Add Gemini as a fallback option
-- `repair`: Add Gemini as a secondary fallback
-- Add a new `"code"` model key to the Gemini models map so the routing can resolve it
+Create a server-side copy of all three library definitions (backgrounds, components, pages) as a single module the pipeline can reference. This includes:
+- A lookup function `findLibraryItem(query: string)` that fuzzy-matches user prompts against library item names/IDs
+- An export of all library names as a reference catalog that can be injected into the AI prompt
 
-This means the fallback chain for coding becomes: **Grok -> Gemini -> OpenAI** (three-deep resilience).
+**File: `supabase/functions/buildable-generate/pipeline/stages/intent.ts` (MODIFY)**
 
----
+Add library detection to the intent stage:
+- Scan the user prompt for known library item names (e.g., "Ocean Blue", "Glass Navbar", "Mesh Gradient", "Pricing Cards")
+- Add a new intent type `"use_library"` that flags when a user is requesting a specific library asset
+- Return matched library items in the intent result so downstream stages can use them
 
-## Phase 3: Upgrade ai-chat Pipeline Models
+**File: `supabase/functions/buildable-generate/pipeline/types.ts` (MODIFY)**
 
-Update the `ai-chat` edge function to use the latest available models through the Lovable AI Gateway.
+- Add `libraryMatches` field to `IntentResult` to carry matched library items through the pipeline
+- Add `"use_library"` to the `IntentType` union
 
-**File: `supabase/functions/ai-chat/index.ts`**
+### Part 2: Wire Library Items into Code Generation
 
-Update the MODELS constant:
-```
-const MODELS = {
-  architect: "google/gemini-2.5-pro",
-  code: "google/gemini-2.5-pro",
-  validate: "google/gemini-2.5-flash",
-  ui: "google/gemini-3-flash-preview",
-  fast: "google/gemini-2.5-flash",
-};
-```
+**File: `supabase/functions/buildable-generate/pipeline/stages/generate.ts` (MODIFY)**
 
-These are already close to optimal; the main change is ensuring `ui` uses the latest preview model for design-oriented tasks.
+- When library matches are found in the intent, inject the actual library code into the AI prompt as reference material (e.g., "The user wants the 'Ocean Blue' background. Here is the exact code to use: ...")
+- For background requests specifically, inject the background CSS/classes directly rather than asking the AI to recreate them
+- For component requests, provide the full component code from the library as a starting template
 
-**File: `supabase/functions/ai-chat/pipeline.ts`**
+**File: `supabase/functions/buildable-generate/pipeline/stages/plan.ts` (MODIFY)**
 
-Same model updates for consistency.
+- When library items are detected, include them in the architecture plan with their exact code references
+- This ensures the generate stage knows exactly which library assets to incorporate
 
----
+### Part 3: Improve Design Quality
 
-## Phase 4: Increase Context Window Usage
+**File: `supabase/functions/buildable-generate/pipeline/core-directive.ts` (MODIFY)**
 
-Gemini's biggest advantage is its massive context window (up to 2M tokens for Pro). Update the pipeline to send more existing file context when Gemini is the active provider.
+Add a new `DESIGN_EXCELLENCE` section to the core directive that enforces:
+- **Typography hierarchy**: Specific font size scales (hero text at text-5xl to text-7xl, section headings at text-3xl to text-4xl, proper line-height and letter-spacing)
+- **Spacing system**: Consistent use of py-24 for sections, gap-8 for grids, proper padding ratios
+- **Micro-interactions**: Required animations on scroll, staggered card appearances, smooth hover transitions with transform and shadow
+- **Visual depth**: Layered backgrounds with multiple gradient overlays, glassmorphism with varied blur levels, subtle border gradients
+- **Color sophistication**: Beyond basic purple-pink gradients -- provide specific color palettes for different project types (warm, cool, earthy, neon)
+- **Real content**: Never use "Lorem ipsum" or single-word placeholders -- generate realistic copy that matches the project niche
 
-**File: `supabase/functions/buildable-generate/pipeline/stages/generate.ts`**
+**File: `supabase/functions/buildable-generate/pipeline/stages/generate.ts` (MODIFY)**
 
-Current behavior: Only sends 5 existing files, each truncated to 1,000 characters.
+Upgrade the hardcoded template fallbacks:
+- Replace the compact, minified template strings with properly formatted, visually richer templates
+- Add better spacing, animations (fade-in on scroll), more detailed section content
+- Include more image variety per niche (use 4-5 images instead of 2-3)
 
-Updated behavior:
-- When the active provider is Gemini, send up to 15 existing files with 3,000 characters each
-- For Grok/OpenAI, keep the current limits (smaller context windows)
+### Part 4: Enforce Page Completeness
 
-**File: `supabase/functions/buildable-generate/pipeline/stages/plan.ts`**
+**File: `supabase/functions/buildable-generate/pipeline/validation.ts` (MODIFY)**
 
-- Increase the context sent to the planner since Gemini Pro can handle it
+Add completeness checks to the validation system:
+- Compare generated files against the architecture plan -- if the plan calls for 10 files and only 6 were generated, flag as incomplete
+- Check that every planned component path exists in the generated output
+- Verify that component files contain actual rendered JSX (not just empty exports)
+- Add a `completeness` score separate from the `polish` score, both required to pass
 
----
+**File: `supabase/functions/buildable-generate/pipeline/repair.ts` (MODIFY)**
 
-## Phase 5: Smart Provider Selection
+Enhance the repair loop to handle incompleteness:
+- When files are missing from the plan, trigger a targeted generation call specifically for the missing files
+- Pass the existing files as context so the new files maintain consistency
+- The repair prompt should explicitly list which files are missing and what they should contain based on the plan
 
-Add intelligence to pick the best provider based on the complexity of the request, not just a static routing table.
+**File: `supabase/functions/buildable-generate/pipeline/index.ts` (MODIFY)**
 
-**File: `supabase/functions/buildable-generate/pipeline/routing.ts`**
-
-Add a `selectBestProvider` function that considers:
-- Prompt length (long prompts favor Gemini's large context)
-- Number of existing files (more files = Gemini's context window advantage)
-- Task complexity (simple changes can use Flash, complex ones use Pro)
-
-This doesn't replace the static routing -- it enhances the `buildProviderChain` function to dynamically adjust priority based on the actual request.
+Add a completeness gate between generation and validation:
+- After generation, compare output against the plan
+- If less than 80% of planned files were generated, trigger a "completion pass" that generates only the missing files
+- This runs before validation so the full set of files gets validated together
 
 ---
 
 ## Technical Details
 
-### Files to Modify
+### Library Matching Algorithm
 
-1. `supabase/functions/buildable-generate/pipeline/routing.ts` -- Upgrade Gemini models, update routing matrix, add smart provider selection
-2. `supabase/functions/buildable-generate/pipeline/stages/generate.ts` -- Increase context limits for Gemini
-3. `supabase/functions/buildable-generate/pipeline/stages/plan.ts` -- Increase context for planning
-4. `supabase/functions/ai-chat/index.ts` -- Update model constants
-5. `supabase/functions/ai-chat/pipeline.ts` -- Update model constants
+The `findLibraryItem` function will use a simple but effective approach:
+1. Normalize the user prompt to lowercase
+2. Check for exact ID matches (e.g., "ocean-blue", "glass-navbar")
+3. Check for name substring matches (e.g., "ocean blue" matches "Ocean Blue")
+4. Check for category mentions with adjectives (e.g., "blue gradient" matches gradients with "blue")
+5. Return all matches with confidence scores
 
-### No New Files Required
+### Completeness Validation Logic
 
-All changes are upgrades to existing infrastructure.
+```text
+Plan says:          Generated:          Action:
+10 files            10 files            -> Pass (validate normally)
+10 files            7 files             -> Completion pass (generate 3 missing)
+10 files            3 files             -> Re-generate (too few, full retry)
+```
 
-### No New API Keys Required
+### Files Changed Summary
 
-Your `GEMINI_API_KEY` is already configured and working. The Gemini API supports all `gemini-2.5-*` models with the same key through the OpenAI-compatible endpoint that's already in use.
+| File | Action | Purpose |
+|------|--------|---------|
+| `pipeline/libraries.ts` | Create | Server-side library catalog with fuzzy matching |
+| `pipeline/stages/intent.ts` | Modify | Detect library references in user prompts |
+| `pipeline/types.ts` | Modify | Add library match types to pipeline context |
+| `pipeline/stages/plan.ts` | Modify | Include library items in architecture plan |
+| `pipeline/stages/generate.ts` | Modify | Inject library code into AI prompt, upgrade templates |
+| `pipeline/core-directive.ts` | Modify | Add design excellence standards |
+| `pipeline/validation.ts` | Modify | Add completeness checking |
+| `pipeline/repair.ts` | Modify | Handle missing files in repair loop |
+| `pipeline/index.ts` | Modify | Add completeness gate before validation |
 
-### Deployment
-
-Both edge functions (`buildable-generate` and `ai-chat`) will be redeployed after changes. No database migrations needed.
-
-### Risk Mitigations
-
-- The fallback chain ensures that if Gemini 2.5 models are unavailable or return errors, the system falls back to Grok and then OpenAI
-- The confidence scoring system already validates response quality regardless of which provider generated it
-- Model name changes are backward-compatible with the OpenAI-compatible API endpoint
-
-I also want ALL AIs to be used, regardless of the task, if they all work together, the results will be much better. I also want the Live Preview to actually work. Do what you have to do to make it work. You are Lovable, aren't you the best there is? Or will Buildable AI pass you?
+All changes are within the `supabase/functions/buildable-generate/pipeline/` directory. The edge function will be redeployed after changes.
 
