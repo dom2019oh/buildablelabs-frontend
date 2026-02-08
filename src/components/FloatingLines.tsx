@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import {
   Scene,
   OrthographicCamera,
@@ -259,29 +259,97 @@ export default function FloatingLines({
   const currentInfluenceRef = useRef(0);
   const targetParallaxRef = useRef(new Vector2(0, 0));
   const currentParallaxRef = useRef(new Vector2(0, 0));
+  const uniformsRef = useRef<Record<string, { value: unknown }> | null>(null);
 
-  const getLineCount = (waveType: string) => {
+  // Stabilize props into primitives so they don't cause effect re-runs
+  const enableTop = enabledWaves.includes('top');
+  const enableMiddle = enabledWaves.includes('middle');
+  const enableBottom = enabledWaves.includes('bottom');
+
+  const getLineCount = (waveType: 'top' | 'middle' | 'bottom') => {
     if (typeof lineCount === 'number') return lineCount;
-    if (!enabledWaves.includes(waveType as 'top' | 'middle' | 'bottom')) return 0;
-    const index = enabledWaves.indexOf(waveType as 'top' | 'middle' | 'bottom');
+    const index = enabledWaves.indexOf(waveType);
+    if (index === -1) return 0;
     return lineCount[index] ?? 6;
   };
 
-  const getLineDistance = (waveType: string) => {
+  const getLineDistance = (waveType: 'top' | 'middle' | 'bottom') => {
     if (typeof lineDistance === 'number') return lineDistance;
-    if (!enabledWaves.includes(waveType as 'top' | 'middle' | 'bottom')) return 0.1;
-    const index = enabledWaves.indexOf(waveType as 'top' | 'middle' | 'bottom');
+    const index = enabledWaves.indexOf(waveType);
+    if (index === -1) return 0.1;
     return (lineDistance as number[])[index] ?? 0.1;
   };
 
-  const topLineCount = enabledWaves.includes('top') ? getLineCount('top') : 0;
-  const middleLineCount = enabledWaves.includes('middle') ? getLineCount('middle') : 0;
-  const bottomLineCount = enabledWaves.includes('bottom') ? getLineCount('bottom') : 0;
+  const topLC = enableTop ? getLineCount('top') : 0;
+  const middleLC = enableMiddle ? getLineCount('middle') : 0;
+  const bottomLC = enableBottom ? getLineCount('bottom') : 0;
 
-  const topLineDistance = enabledWaves.includes('top') ? getLineDistance('top') * 0.01 : 0.01;
-  const middleLineDistance = enabledWaves.includes('middle') ? getLineDistance('middle') * 0.01 : 0.01;
-  const bottomLineDistance = enabledWaves.includes('bottom') ? getLineDistance('bottom') * 0.01 : 0.01;
+  const topLD = enableTop ? getLineDistance('top') * 0.01 : 0.01;
+  const middleLD = enableMiddle ? getLineDistance('middle') * 0.01 : 0.01;
+  const bottomLD = enableBottom ? getLineDistance('bottom') * 0.01 : 0.01;
 
+  const topWP = useMemo(() => new Vector3(
+    topWavePosition?.x ?? 10.0,
+    topWavePosition?.y ?? 0.5,
+    topWavePosition?.rotate ?? -0.4
+  ), [topWavePosition?.x, topWavePosition?.y, topWavePosition?.rotate]);
+
+  const middleWP = useMemo(() => new Vector3(
+    middleWavePosition?.x ?? 5.0,
+    middleWavePosition?.y ?? 0.0,
+    middleWavePosition?.rotate ?? 0.2
+  ), [middleWavePosition?.x, middleWavePosition?.y, middleWavePosition?.rotate]);
+
+  const bottomWP = useMemo(() => new Vector3(
+    bottomWavePosition?.x ?? 2.0,
+    bottomWavePosition?.y ?? -0.7,
+    bottomWavePosition?.rotate ?? 0.4
+  ), [bottomWavePosition?.x, bottomWavePosition?.y, bottomWavePosition?.rotate]);
+
+  const gradientKey = useMemo(() => linesGradient?.join(',') ?? '', [linesGradient]);
+
+  // Update uniforms without recreating the scene
+  useEffect(() => {
+    const u = uniformsRef.current;
+    if (!u) return;
+
+    u.animationSpeed.value = animationSpeed;
+    u.enableTop.value = enableTop;
+    u.enableMiddle.value = enableMiddle;
+    u.enableBottom.value = enableBottom;
+    u.topLineCount.value = topLC;
+    u.middleLineCount.value = middleLC;
+    u.bottomLineCount.value = bottomLC;
+    u.topLineDistance.value = topLD;
+    u.middleLineDistance.value = middleLD;
+    u.bottomLineDistance.value = bottomLD;
+    (u.topWavePosition.value as Vector3).copy(topWP);
+    (u.middleWavePosition.value as Vector3).copy(middleWP);
+    (u.bottomWavePosition.value as Vector3).copy(bottomWP);
+    u.interactive.value = interactive;
+    u.bendRadius.value = bendRadius;
+    u.bendStrength.value = bendStrength;
+    u.parallax.value = parallax;
+    u.parallaxStrength.value = parallaxStrength;
+
+    if (linesGradient && linesGradient.length > 0) {
+      const stops = linesGradient.slice(0, MAX_GRADIENT_STOPS);
+      u.lineGradientCount.value = stops.length;
+      stops.forEach((hex, i) => {
+        const color = hexToVec3(hex);
+        (u.lineGradient.value as Vector3[])[i].set(color.x, color.y, color.z);
+      });
+    } else {
+      u.lineGradientCount.value = 0;
+    }
+  }, [
+    animationSpeed, enableTop, enableMiddle, enableBottom,
+    topLC, middleLC, bottomLC, topLD, middleLD, bottomLD,
+    topWP, middleWP, bottomWP, interactive, bendRadius, bendStrength,
+    parallax, parallaxStrength, gradientKey, linesGradient
+  ]);
+
+  // WebGL setup — runs once
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -299,32 +367,18 @@ export default function FloatingLines({
       iTime: { value: 0 },
       iResolution: { value: new Vector3(1, 1, 1) },
       animationSpeed: { value: animationSpeed },
-      enableTop: { value: enabledWaves.includes('top') },
-      enableMiddle: { value: enabledWaves.includes('middle') },
-      enableBottom: { value: enabledWaves.includes('bottom') },
-      topLineCount: { value: topLineCount },
-      middleLineCount: { value: middleLineCount },
-      bottomLineCount: { value: bottomLineCount },
-      topLineDistance: { value: topLineDistance },
-      middleLineDistance: { value: middleLineDistance },
-      bottomLineDistance: { value: bottomLineDistance },
-      topWavePosition: {
-        value: new Vector3(topWavePosition?.x ?? 10.0, topWavePosition?.y ?? 0.5, topWavePosition?.rotate ?? -0.4)
-      },
-      middleWavePosition: {
-        value: new Vector3(
-          middleWavePosition?.x ?? 5.0,
-          middleWavePosition?.y ?? 0.0,
-          middleWavePosition?.rotate ?? 0.2
-        )
-      },
-      bottomWavePosition: {
-        value: new Vector3(
-          bottomWavePosition?.x ?? 2.0,
-          bottomWavePosition?.y ?? -0.7,
-          bottomWavePosition?.rotate ?? 0.4
-        )
-      },
+      enableTop: { value: enableTop },
+      enableMiddle: { value: enableMiddle },
+      enableBottom: { value: enableBottom },
+      topLineCount: { value: topLC },
+      middleLineCount: { value: middleLC },
+      bottomLineCount: { value: bottomLC },
+      topLineDistance: { value: topLD },
+      middleLineDistance: { value: middleLD },
+      bottomLineDistance: { value: bottomLD },
+      topWavePosition: { value: topWP.clone() },
+      middleWavePosition: { value: middleWP.clone() },
+      bottomWavePosition: { value: bottomWP.clone() },
       iMouse: { value: new Vector2(-1000, -1000) },
       interactive: { value: interactive },
       bendRadius: { value: bendRadius },
@@ -348,6 +402,8 @@ export default function FloatingLines({
       });
     }
 
+    uniformsRef.current = uniforms;
+
     const material = new ShaderMaterial({
       uniforms,
       vertexShader,
@@ -360,11 +416,12 @@ export default function FloatingLines({
 
     const clock = new Clock();
 
+    const container = containerRef.current;
+
     const setSize = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const width = el.clientWidth || 1;
-      const height = el.clientHeight || 1;
+      if (!container) return;
+      const width = container.clientWidth || 1;
+      const height = container.clientHeight || 1;
       renderer.setSize(width, height, false);
       const canvasWidth = renderer.domElement.width;
       const canvasHeight = renderer.domElement.height;
@@ -374,8 +431,8 @@ export default function FloatingLines({
     setSize();
 
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setSize) : null;
-    if (ro && containerRef.current) {
-      ro.observe(containerRef.current);
+    if (ro) {
+      ro.observe(container);
     }
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -399,26 +456,20 @@ export default function FloatingLines({
       targetInfluenceRef.current = 0.0;
     };
 
-    if (interactive) {
-      renderer.domElement.addEventListener('pointermove', handlePointerMove);
-      renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
-    }
+    renderer.domElement.addEventListener('pointermove', handlePointerMove);
+    renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
 
     let raf = 0;
     const renderLoop = () => {
       uniforms.iTime.value = clock.getElapsedTime();
 
-      if (interactive) {
-        currentMouseRef.current.lerp(targetMouseRef.current, mouseDamping);
-        (uniforms.iMouse.value as Vector2).copy(currentMouseRef.current);
-        currentInfluenceRef.current += (targetInfluenceRef.current - currentInfluenceRef.current) * mouseDamping;
-        uniforms.bendInfluence.value = currentInfluenceRef.current;
-      }
+      currentMouseRef.current.lerp(targetMouseRef.current, mouseDamping);
+      (uniforms.iMouse.value as Vector2).copy(currentMouseRef.current);
+      currentInfluenceRef.current += (targetInfluenceRef.current - currentInfluenceRef.current) * mouseDamping;
+      uniforms.bendInfluence.value = currentInfluenceRef.current;
 
-      if (parallax) {
-        currentParallaxRef.current.lerp(targetParallaxRef.current, mouseDamping);
-        (uniforms.parallaxOffset.value as Vector2).copy(currentParallaxRef.current);
-      }
+      currentParallaxRef.current.lerp(targetParallaxRef.current, mouseDamping);
+      (uniforms.parallaxOffset.value as Vector2).copy(currentParallaxRef.current);
 
       renderer.render(scene, camera);
       raf = requestAnimationFrame(renderLoop);
@@ -428,13 +479,12 @@ export default function FloatingLines({
 
     return () => {
       cancelAnimationFrame(raf);
-      if (ro && containerRef.current) {
+      uniformsRef.current = null;
+      if (ro) {
         ro.disconnect();
       }
-      if (interactive) {
-        renderer.domElement.removeEventListener('pointermove', handlePointerMove);
-        renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
-      }
+      renderer.domElement.removeEventListener('pointermove', handlePointerMove);
+      renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
       geometry.dispose();
       material.dispose();
       renderer.dispose();
@@ -442,28 +492,8 @@ export default function FloatingLines({
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }
     };
-  }, [
-    linesGradient,
-    enabledWaves,
-    lineCount,
-    lineDistance,
-    topWavePosition,
-    middleWavePosition,
-    bottomWavePosition,
-    animationSpeed,
-    interactive,
-    bendRadius,
-    bendStrength,
-    mouseDamping,
-    parallax,
-    parallaxStrength,
-    topLineCount,
-    middleLineCount,
-    bottomLineCount,
-    topLineDistance,
-    middleLineDistance,
-    bottomLineDistance
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
