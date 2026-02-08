@@ -136,6 +136,15 @@
     background: hsl(240 6% 40%);
   }
 
+  /* Funnel Display for headings and brand text */
+  h1, h2 {
+    font-family: 'Funnel Display', sans-serif;
+  }
+
+  .font-brand {
+    font-family: 'Funnel Display', sans-serif;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, sans-serif;

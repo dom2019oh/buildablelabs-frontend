@@ -124,8 +124,7 @@ export default function Index() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, ease: "easeOut" }}
-            className="flex items-center gap-2 text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-6"
-            style={{ fontFamily: "'Sora', sans-serif" }}
+            className="flex items-center gap-2 text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-6 font-brand"
           >
             <span className="text-white">Build a...</span>
             <RotatingText

@@ -47,9 +47,7 @@ export default function Navbar() {
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2">
           <img src={buildableLogo} alt="Buildable" className="h-14 w-14 object-contain" />
-          <span className="text-base font-bold tracking-tight text-primary-foreground" style={{
-          fontFamily: "'Funnel Display', sans-serif"
-        }}>Buildable</span>
+          <span className="text-xl font-bold tracking-tight text-primary-foreground font-brand">Buildable</span>
         </Link>
 
         {/* Links and account on the right */}
