@@ -65,6 +65,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        brand: ['Funnel Display', 'sans-serif'],
       },
       borderRadius: {
         lg: "var(--radius)",

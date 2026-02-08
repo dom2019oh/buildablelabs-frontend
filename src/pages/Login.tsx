@@ -93,7 +93,7 @@ export default function Login() {
             {/* Logo */}
             <div className="flex items-center justify-center gap-3 mb-8">
               <img src={buildableLogo} alt="Buildable" className="h-10 w-10" />
-              <span className="text-2xl font-bold">Buildable</span>
+              <span className="text-2xl font-bold font-brand">Buildable</span>
             </div>
 
             <h1 className="text-2xl font-bold text-center mb-2">Welcome back</h1>
