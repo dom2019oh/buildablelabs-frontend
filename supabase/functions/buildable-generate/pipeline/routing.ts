@@ -75,11 +75,11 @@ export const TASK_ROUTING: Record<AITaskType, TaskRouting> = {
     fallback: { provider: "openai", model: "reasoning" },
   },
   coding: {
-    // Primary: Grok for speed, but ensemble mode will also call Gemini
-    provider: "grok",
+    // Primary: Gemini Flash for speed + quality (large context, fast output)
+    provider: "gemini",
     model: "code",
-    confidenceThreshold: 0.75,
-    fallback: { provider: "gemini", model: "code" },
+    confidenceThreshold: 0.70,
+    fallback: { provider: "grok", model: "code" },
   },
   validation: {
     provider: "openai",
@@ -407,7 +407,7 @@ export function getContextLimits(provider: ProviderKey): { maxFiles: number; max
 // =============================================================================
 
 const AI_CALL_TIMEOUT_MS = 25_000; // 25 seconds for non-coding tasks
-const AI_CODING_TIMEOUT_MS = 50_000; // 50 seconds for code generation (largest task)
+const AI_CODING_TIMEOUT_MS = 45_000; // 45 seconds for code generation
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = AI_CALL_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();

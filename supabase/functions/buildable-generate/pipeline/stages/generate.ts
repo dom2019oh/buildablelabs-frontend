@@ -3,7 +3,7 @@
 // =============================================================================
 
 import type { PipelineContext, StageResult, FileOperation, ArchitecturePlan } from "../types.ts";
-import { callAI, callAIEnsemble, getContextLimits, getAvailableProviders, profileRequest } from "../routing.ts";
+import { callAI, getContextLimits, getAvailableProviders, profileRequest } from "../routing.ts";
 import { StageTracer } from "../telemetry.ts";
 import { CODE_QUALITY_RULES, VISUAL_STANDARDS, FULL_STACK_DIRECTIVE, IMAGE_LIBRARY, FORBIDDEN_PATTERNS } from "../core-directive.ts";
 import { DESIGN_EXCELLENCE } from "../core-directive.ts";
@@ -133,8 +133,6 @@ export async function executeGenerateStage(ctx: PipelineContext): Promise<StageR
   }
 
   const isNew = ctx.existingFiles.length === 0;
-  const available = getAvailableProviders();
-  const useEnsemble = available.length >= 2 && isNew;
 
   // Build context with provider-aware limits
   const fileContext = buildExistingFilesContext(ctx.existingFiles);
@@ -147,29 +145,24 @@ export async function executeGenerateStage(ctx: PipelineContext): Promise<StageR
     ctx.existingFiles.map(f => ({ path: f.path, content: f.content })),
   );
 
-  // Build a detailed plan string with component purposes
-  const planStr = JSON.stringify(ctx.plan, null, 2);
+  // Build a compact plan string (minimize tokens — only paths + purposes)
+  const compactPlan = ctx.plan ? {
+    projectType: ctx.plan.projectType,
+    pages: ctx.plan.pages,
+    components: ctx.plan.components,
+  } : {};
+  const planStr = JSON.stringify(compactPlan);
 
   try {
     let result;
 
-    if (useEnsemble) {
-      console.log("[Generate] Using ENSEMBLE mode (new project, multiple providers available)");
-      result = await callAIEnsemble(
-        [
-          { role: "system", content: prompt },
-          ...ctx.conversationHistory.slice(-3),
-          { role: "user", content: `PLAN:\n${planStr}\n\nREQUEST: ${ctx.originalPrompt}\n\nGenerate ALL files listed in the plan. Every component must be COMPLETE with full styling, animations, and content. No empty components.` },
-        ],
-        { temperature: 0.5, profile },
-      );
-    } else {
-      result = await callAI("coding", [
-        { role: "system", content: prompt },
-        ...ctx.conversationHistory.slice(-3),
-        { role: "user", content: `PLAN:\n${planStr}\n\nREQUEST: ${ctx.originalPrompt}\n\nGenerate ALL files listed in the plan. Every component must be COMPLETE with full styling, animations, and content. No empty components.` },
-      ], { temperature: 0.5, profile });
-    }
+    // Always use single-provider fast path (ensemble doubles latency for marginal quality)
+    console.log(`[Generate] Using FAST single-provider mode (isNew=${isNew})`);
+    result = await callAI("coding", [
+      { role: "system", content: prompt },
+      ...ctx.conversationHistory.slice(-2),
+      { role: "user", content: `PLAN:\n${planStr}\n\nREQUEST: ${ctx.originalPrompt}\n\nGenerate ALL files. COMPLETE code only. No placeholders.` },
+    ], { temperature: 0.4, profile });
 
     tracer.modelCall(result.provider, result.model, "coding", result.latencyMs, result.tokensUsed);
     const files = extractFiles(result.content);

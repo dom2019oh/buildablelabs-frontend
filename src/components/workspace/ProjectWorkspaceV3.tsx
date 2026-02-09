@@ -29,6 +29,7 @@ import ThinkingIndicatorV2 from './ThinkingIndicatorV2';
 import PipelineProgressBar from './PipelineProgressBar';
 import PreviewShowcase from './PreviewShowcase';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
 
 // Interface modes type
 type InterfaceMode = 'preview' | 'database' | 'code' | 'performance';
@@ -111,22 +112,82 @@ export default function ProjectWorkspaceV3() {
   const [deviceSize, setDeviceSize] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [currentActions, setCurrentActions] = useState<string[]>([]);
   const [showHistoryInPreview, setShowHistoryInPreview] = useState(false);
+  // Track the placeholder message ID so we can update it on completion
+  const [pendingAssistantMsgId, setPendingAssistantMsgId] = useState<string | null>(null);
 
   // =========================================================================
   // CRITICAL: Clear files when switching projects to prevent state leakage
   // =========================================================================
   useEffect(() => {
-    // Clear the store immediately when projectId changes
     clearFiles();
     setPreviewHtml('');
     setCurrentRoute('/');
     setPreviewKey(prev => prev + 1);
     setCurrentVersionNumber(0);
     setActiveMode('preview');
+    setPendingAssistantMsgId(null);
   }, [projectId, clearFiles, setPreviewHtml]);
 
+  // =========================================================================
+  // SESSION RECOVERY: On mount, check for recent completed sessions whose
+  // assistant messages may have been lost (e.g. user refreshed mid-generation)
+  // =========================================================================
+  useEffect(() => {
+    if (!workspaceId || !projectId) return;
+
+    const recoverSession = async () => {
+      try {
+        // Find any "generating" placeholder messages that never got updated
+        const { data: pendingMsgs } = await supabase
+          .from('project_messages')
+          .select('id, metadata')
+          .eq('project_id', projectId)
+          .eq('role', 'assistant')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (!pendingMsgs) return;
+
+        for (const msg of pendingMsgs) {
+          const meta = msg.metadata as Record<string, unknown> | null;
+          if (meta?.status === 'generating' && meta?.sessionId) {
+            // Check if this session actually completed
+            const { data: session } = await supabase
+              .from('generation_sessions')
+              .select('status, files_generated, completed_at')
+              .eq('id', meta.sessionId as string)
+              .single();
+
+            if (session && (session.status === 'completed' || session.status === 'failed')) {
+              // Update the placeholder message with the real result
+              const content = session.status === 'completed'
+                ? `✅ Generated ${session.files_generated || 0} file(s) successfully.`
+                : `❌ Generation failed. Please try again.`;
+
+              await supabase
+                .from('project_messages')
+                .update({
+                  content,
+                  metadata: {
+                    ...meta,
+                    status: session.status,
+                    filesGenerated: session.files_generated,
+                    recovered: true,
+                  },
+                })
+                .eq('id', msg.id);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Recovery] Session recovery failed:', e);
+      }
+    };
+
+    recoverSession();
+  }, [workspaceId, projectId]);
+
   // Pick the best file to compile into a static preview.
-  // IMPORTANT: the AI may generate only /pages/* files (e.g. Dashboard.tsx), so we can't rely on Index/App.
   const pickPreviewEntryFile = useCallback(
     (candidateFiles: Array<{ file_path?: string; path?: string; content: string }>) => {
       const normalized = candidateFiles
@@ -137,7 +198,6 @@ export default function ProjectWorkspaceV3() {
         .filter((f) => !!f.path);
 
       const score = (p: string) => {
-        // Higher is better
         const lower = p.toLowerCase();
         if (lower.endsWith('src/pages/index.tsx') || lower.endsWith('src/pages/home.tsx')) return 100;
         if (lower.endsWith('src/pages/dashboard.tsx')) return 90;
@@ -155,11 +215,9 @@ export default function ProjectWorkspaceV3() {
   const availableRoutes = useMemo(() => {
     const routes = new Set<string>(['/']);
     
-    // Check workspace files for page components
     if (workspaceFiles && workspaceFiles.length > 0) {
       workspaceFiles.forEach(file => {
         const path = file.file_path;
-        // Look for page files in common patterns
         if (path.includes('/pages/') || path.includes('/routes/')) {
           const match = path.match(/(?:pages|routes)\/([^.]+)/);
           if (match) {
@@ -172,7 +230,6 @@ export default function ProjectWorkspaceV3() {
       });
     }
     
-    // Also check in-memory files
     files.forEach((_, filePath) => {
       if (filePath.includes('/pages/') || filePath.includes('/routes/')) {
         const match = filePath.match(/(?:pages|routes)\/([^.]+)/);
@@ -203,10 +260,8 @@ export default function ProjectWorkspaceV3() {
         addFile(f.file_path, f.content);
       });
       
-      // Generate/refresh preview from best available entry file
       const entry = pickPreviewEntryFile(workspaceFiles.map(f => ({ file_path: f.file_path, content: f.content })));
       if (entry) {
-        // Inline simple component composition to avoid blank previews for pages built from sub-components.
         const html = compileWorkspaceEntryToHtml(entry.path, workspaceFiles);
         const fullHtml = generatePreviewHtml(html);
         setPreviewHtml(fullHtml);
@@ -230,12 +285,10 @@ export default function ProjectWorkspaceV3() {
   }, [latestVersion]);
 
   // Recompile preview when Zustand store files change during SSE delivery
-  // This ensures the preview updates in real-time as files arrive from AI generation
   const storeFileCount = files.size;
   useEffect(() => {
     if (storeFileCount === 0 || !isGenerating) return;
     
-    // Build preview from in-memory files during generation
     const allFiles = Array.from(files.entries()).map(([path, f]) => ({
       file_path: path,
       content: f.content,
@@ -252,11 +305,10 @@ export default function ProjectWorkspaceV3() {
     }
   }, [storeFileCount, isGenerating, files, pickPreviewEntryFile, setPreviewHtml]);
 
-  // NEW: Recompile preview when route changes
+  // Recompile preview when route changes
   useEffect(() => {
     if (!workspaceFiles || workspaceFiles.length === 0) return;
     
-    // Compile the selected route to HTML
     const html = compileRouteToHtml(
       currentRoute,
       workspaceFiles.map(f => ({ file_path: f.file_path, content: f.content }))
@@ -288,8 +340,30 @@ export default function ProjectWorkspaceV3() {
       return;
     }
 
-    // Send user message to store
+    // 1) Save user message immediately
     await sendMessage.mutateAsync({ content, role: 'user' });
+
+    // 2) Save a placeholder assistant message with "generating" status
+    //    This persists through page refreshes
+    let placeholderMsgId: string | null = null;
+    try {
+      const { data: placeholderMsg } = await supabase
+        .from('project_messages')
+        .insert({
+          project_id: projectId!,
+          user_id: (await supabase.auth.getUser()).data.user?.id!,
+          role: 'assistant',
+          content: '🔄 Generating your project...',
+          metadata: { status: 'generating', prompt: content.slice(0, 100) },
+        })
+        .select('id')
+        .single();
+      
+      placeholderMsgId = placeholderMsg?.id || null;
+      setPendingAssistantMsgId(placeholderMsgId);
+    } catch (e) {
+      console.error('[Chat] Failed to save placeholder message:', e);
+    }
 
     // Get conversation history
     const history = messages.map(m => ({
@@ -310,9 +384,7 @@ export default function ProjectWorkspaceV3() {
       history,
       existingFiles,
       // On chunk
-      (chunk, fullContent) => {
-        // Streaming content is automatically tracked in useBuildableAI
-      },
+      (chunk, fullContent) => {},
       // On complete
       async (files, metadata) => {
         // Refetch workspace files to get the saved versions
@@ -330,7 +402,6 @@ export default function ProjectWorkspaceV3() {
             console.error('Version creation failed:', e);
           }
 
-          // Save preview to project
           if (projectId && previewHtml) {
             updateProject.mutate({
               id: projectId,
@@ -339,18 +410,34 @@ export default function ProjectWorkspaceV3() {
           }
         }
 
-        // Send assistant message with summary
+        // Update the placeholder message with the real result
         const fileNames = files.map(f => f.path);
         const displayContent = `✅ Created ${files.length} file(s):\n${fileNames.map(f => `• ${f}`).join('\n')}`;
         
-        await sendMessage.mutateAsync({
-          content: displayContent,
-          role: 'assistant',
-          metadata: {
-            filesCreated: fileNames,
-            sessionId: metadata?.sessionId,
-          },
-        });
+        if (placeholderMsgId) {
+          await supabase
+            .from('project_messages')
+            .update({
+              content: displayContent,
+              metadata: {
+                filesCreated: fileNames,
+                sessionId: metadata?.sessionId,
+                status: 'success',
+              },
+            })
+            .eq('id', placeholderMsgId);
+          setPendingAssistantMsgId(null);
+        } else {
+          // Fallback: insert a new message
+          await sendMessage.mutateAsync({
+            content: displayContent,
+            role: 'assistant',
+            metadata: {
+              filesCreated: fileNames,
+              sessionId: metadata?.sessionId,
+            },
+          });
+        }
 
         // Switch to preview mode
         if (files.length > 0) {
@@ -360,11 +447,24 @@ export default function ProjectWorkspaceV3() {
       },
       // On error
       async (error) => {
-        await sendMessage.mutateAsync({
-          content: `❌ Error: ${error.message}`,
-          role: 'assistant',
-          metadata: { status: 'error' },
-        });
+        const errorContent = `❌ Error: ${error.message}`;
+        
+        if (placeholderMsgId) {
+          await supabase
+            .from('project_messages')
+            .update({
+              content: errorContent,
+              metadata: { status: 'error', error: error.message },
+            })
+            .eq('id', placeholderMsgId);
+          setPendingAssistantMsgId(null);
+        } else {
+          await sendMessage.mutateAsync({
+            content: errorContent,
+            role: 'assistant',
+            metadata: { status: 'error' },
+          });
+        }
       }
     );
   }, [workspaceId, messages, workspaceFiles, generate, sendMessage, refetchFiles, createVersion, previewHtml, projectId, updateProject, setSelectedFile, toast]);
@@ -454,10 +554,25 @@ export default function ProjectWorkspaceV3() {
 
   const selectedFileData = selectedFile ? getFile(selectedFile) : null;
 
-  // Combine messages with streaming
+  // Combine messages with streaming — filter out the placeholder if we're actively streaming
   const displayMessages = useMemo(() => {
-    const allMessages = [...messages];
-    if (streamingContent) {
+    let allMessages = [...messages];
+    
+    // If we're generating and have a placeholder, replace its content with live streaming content
+    if (isGenerating && pendingAssistantMsgId) {
+      allMessages = allMessages.map(m => {
+        if (m.id === pendingAssistantMsgId) {
+          return {
+            ...m,
+            content: streamingContent
+              ? stripCodeBlocksFromResponse(streamingContent)
+              : `🔄 ${phase.message}`,
+          };
+        }
+        return m;
+      });
+    } else if (streamingContent && !pendingAssistantMsgId) {
+      // Fallback: append streaming as ephemeral message
       allMessages.push({
         id: 'streaming',
         project_id: projectId!,
@@ -469,7 +584,7 @@ export default function ProjectWorkspaceV3() {
       });
     }
     return allMessages;
-  }, [messages, streamingContent, phase.message, projectId, aiMetadata]);
+  }, [messages, streamingContent, phase.message, projectId, aiMetadata, isGenerating, pendingAssistantMsgId]);
 
   if (isProjectLoading) {
     return (
@@ -504,7 +619,7 @@ export default function ProjectWorkspaceV3() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-zinc-900">
-      {/* Top Bar - New V2 version */}
+      {/* Top Bar */}
       <WorkspaceTopBarV2
         projectName={project.name}
         projectId={projectId!}
@@ -515,11 +630,9 @@ export default function ProjectWorkspaceV3() {
         onModeChange={setActiveMode}
         onRefreshPreview={handleRefreshPreview}
         onOpenInNewTab={() => {
-          // Use the actual deployed URL or preview in blob
           if (project.deployed_url) {
             window.open(project.deployed_url, '_blank');
           } else if (previewHtml) {
-            // Open preview HTML in a new tab
             const blob = new Blob([previewHtml], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
             window.open(url, '_blank');
@@ -565,7 +678,7 @@ export default function ProjectWorkspaceV3() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat Panel - New V2 version */}
+        {/* Chat Panel */}
         <AnimatePresence initial={false}>
           {!isChatCollapsed && (
             <motion.div
@@ -669,7 +782,6 @@ export default function ProjectWorkspaceV3() {
               </div>
             </div>
           ) : showHistoryInPreview ? (
-            /* Version History View in Preview Area */
             <VersionHistoryView
               versions={versions.map(v => ({
                 id: v.id,
@@ -693,15 +805,14 @@ export default function ProjectWorkspaceV3() {
           ) : (
             /* Preview Panel */
             <div className="flex-1 h-full flex flex-col bg-zinc-900">
-              {/* Preview Header - Minimal */}
-                <div className="h-10 flex items-center justify-between px-3 border-b border-zinc-800">
+              <div className="h-10 flex items-center justify-between px-3 border-b border-zinc-800">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">Preview</span>
                 </div>
               </div>
               
-              {/* Pipeline Progress Bar - Shows during generation */}
+              {/* Pipeline Progress Bar */}
               {isGenerating && (
                 <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-900/95">
                   <PipelineProgressBar
@@ -714,7 +825,6 @@ export default function ProjectWorkspaceV3() {
 
               {/* Preview Content */}
               <div className="flex-1 overflow-hidden relative">
-                {/* Priority: 1) Preview HTML if available, 2) PreviewShowcase for empty state */}
                 {previewHtml ? (
                   <iframe
                     key={previewKey}
