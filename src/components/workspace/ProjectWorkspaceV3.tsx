@@ -439,6 +439,15 @@ export default function ProjectWorkspaceV3() {
           });
         }
 
+        // Save AI personalized message separately so it persists independently
+        if (metadata?.aiMessage) {
+          await sendMessage.mutateAsync({
+            content: metadata.aiMessage as string,
+            role: 'assistant',
+            metadata: { type: 'ai_response', sessionId: metadata?.sessionId },
+          });
+        }
+
         // Switch to preview mode
         if (files.length > 0) {
           setActiveMode('preview');

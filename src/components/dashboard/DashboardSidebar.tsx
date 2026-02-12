@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FolderKanban, BarChart3, CreditCard, Settings, Layout, Component, Palette } from "lucide-react";
+import { Home, FolderKanban, BarChart3, CreditCard, Settings, Layout, Component, Palette } from "lucide-react";
 import buildableLogo from "@/assets/buildify-logo.png";
 import { cn } from "@/lib/utils";
 
 const navItems = [
+  { icon: Home, label: "Home", href: "/" },
   { icon: FolderKanban, label: "Projects", href: "/dashboard" },
   { icon: BarChart3, label: "Usage", href: "/dashboard/usage" },
   { icon: CreditCard, label: "Billing", href: "/dashboard/billing" },
@@ -21,6 +22,9 @@ export default function DashboardSidebar() {
   const location = useLocation();
 
   const isActive = (href: string) => {
+    if (href === "/") {
+      return false; // Home link is never "active" while in dashboard
+    }
     if (href === "/dashboard") {
       return location.pathname === "/dashboard" || location.pathname.startsWith("/dashboard/project");
     }

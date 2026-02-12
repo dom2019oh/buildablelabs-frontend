@@ -70,14 +70,14 @@ export const TASK_ROUTING: Record<AITaskType, TaskRouting> = {
   },
   planning: {
     provider: "gemini",
-    model: "planning",
+    model: "pro",
     confidenceThreshold: 0.85,
     fallback: { provider: "openai", model: "reasoning" },
   },
   coding: {
-    // Primary: Gemini Flash for speed + quality (large context, fast output)
+    // Primary: Gemini Pro for maximum quality on new projects
     provider: "gemini",
-    model: "code",
+    model: "pro",
     confidenceThreshold: 0.70,
     fallback: { provider: "grok", model: "code" },
   },
