@@ -161,8 +161,8 @@ export async function executeGenerateStage(ctx: PipelineContext): Promise<StageR
     result = await callAI("coding", [
       { role: "system", content: prompt },
       ...ctx.conversationHistory.slice(-2),
-      { role: "user", content: `PLAN:\n${planStr}\n\nREQUEST: ${ctx.originalPrompt}\n\nGenerate ALL files. COMPLETE code only. No placeholders.` },
-    ], { temperature: 0.4, profile });
+      { role: "user", content: `PLAN:\n${planStr}\n\nREQUEST: ${ctx.originalPrompt}\n\nGenerate ALL files. COMPLETE code only. No placeholders.\n\nVISUAL CHECKLIST (verify all are present):\n- Gradient text on 2+ headings\n- Animated hero badge with backdrop-blur\n- Scroll-triggered staggered card animations (IntersectionObserver)\n- Floating background elements (glow orbs, abstract shapes)\n- Layered shadows on cards (shadow-xl + hover:shadow-2xl)\n- @keyframes in index.css: fadeInUp, slideInLeft, scaleIn, shimmer, float, pulseGlow\n- Active states on buttons (active:scale-[0.98])\n- Group hover effects with icon rotation` },
+    ], { temperature: 0.3, profile });
 
     tracer.modelCall(result.provider, result.model, "coding", result.latencyMs, result.tokensUsed);
     const files = extractFiles(result.content);
@@ -173,7 +173,7 @@ export async function executeGenerateStage(ctx: PipelineContext): Promise<StageR
 
     console.log(`[Generate] ✓ ${files.length} files from ${result.provider}/${result.model} (confidence: ${result.confidence.toFixed(2)})`);
 
-    tracer.stageComplete("generate", true, Date.now() - start, { metadata: { fileCount: files.length, ensemble: useEnsemble } });
+    tracer.stageComplete("generate", true, Date.now() - start, { metadata: { fileCount: files.length } });
     return { success: true, data: files, duration: Date.now() - start, canRetry: true };
   } catch (e) {
     const err = e instanceof Error ? e.message : "Generation failed";

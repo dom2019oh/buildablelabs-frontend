@@ -56,22 +56,45 @@ export function useProjectMessages(projectId: string | undefined) {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'project_messages',
           filter: `project_id=eq.${projectId}`,
         },
         (payload) => {
-          queryClient.setQueryData<ProjectMessage[]>(
-            ['project-messages', projectId],
-            (old) => {
-              if (!old) return [payload.new as ProjectMessage];
-              // Avoid duplicates
-              const exists = old.some((m) => m.id === payload.new.id);
-              if (exists) return old;
-              return [...old, payload.new as ProjectMessage];
-            }
-          );
+          const eventType = payload.eventType;
+
+          if (eventType === 'INSERT') {
+            queryClient.setQueryData<ProjectMessage[]>(
+              ['project-messages', projectId],
+              (old) => {
+                if (!old) return [payload.new as ProjectMessage];
+                const exists = old.some((m) => m.id === payload.new.id);
+                if (exists) return old;
+                return [...old, payload.new as ProjectMessage];
+              }
+            );
+          } else if (eventType === 'UPDATE') {
+            queryClient.setQueryData<ProjectMessage[]>(
+              ['project-messages', projectId],
+              (old) => {
+                if (!old) return old;
+                return old.map((m) =>
+                  m.id === (payload.new as ProjectMessage).id
+                    ? (payload.new as ProjectMessage)
+                    : m
+                );
+              }
+            );
+          } else if (eventType === 'DELETE') {
+            queryClient.setQueryData<ProjectMessage[]>(
+              ['project-messages', projectId],
+              (old) => {
+                if (!old) return old;
+                return old.filter((m) => m.id !== (payload.old as any)?.id);
+              }
+            );
+          }
         }
       )
       .subscribe();

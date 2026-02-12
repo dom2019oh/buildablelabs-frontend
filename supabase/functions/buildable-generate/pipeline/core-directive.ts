@@ -529,16 +529,16 @@ These patterns cause validation failure and trigger the repair loop:
 // =============================================================================
 
 export const DESIGN_EXCELLENCE = `
-## DESIGN EXCELLENCE — PREMIUM VISUAL STANDARDS
+## DESIGN EXCELLENCE — COMMERCIAL-GRADE VISUAL STANDARDS
 
 ### TYPOGRAPHY HIERARCHY (Mandatory)
-- Hero headlines: text-5xl sm:text-6xl lg:text-7xl font-bold
+- Hero headlines: text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight
 - Section headings: text-4xl sm:text-5xl font-bold
-- Section subtitles: text-lg text-zinc-400 max-w-2xl mx-auto
+- Section subtitles: text-lg text-zinc-400 max-w-2xl mx-auto text-balance
 - Section labels: text-sm font-semibold uppercase tracking-widest text-purple-400
 - Card titles: text-xl font-semibold
 - Body text: text-base leading-relaxed text-zinc-400
-- Use tracking-tight on hero text, tracking-wider on labels
+- Use tracking-tight on hero text, tracking-wider on labels, leading-snug on headings
 
 ### SPACING SYSTEM (Mandatory)
 - Section vertical padding: py-24 to py-32 (never less than py-20)
@@ -547,30 +547,128 @@ export const DESIGN_EXCELLENCE = `
 - Card internal padding: p-8 (not p-4 or p-6)
 - Content max-width: max-w-7xl mx-auto px-4 sm:px-6 lg:px-8
 
+### COMMERCIAL-GRADE CSS ANIMATIONS (Required in every project)
+
+Every generated project MUST include these keyframes in src/index.css:
+
+\`\`\`css
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-32px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 20px rgba(147, 51, 234, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(147, 51, 234, 0.4); }
+}
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+\`\`\`
+
+Utility classes to include:
+\`\`\`css
+.animate-fade-in-up { animation: fadeInUp 0.7s ease-out both; }
+.animate-slide-in-left { animation: slideInLeft 0.6s ease-out both; }
+.animate-scale-in { animation: scaleIn 0.5s ease-out both; }
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulseGlow 3s ease-in-out infinite; }
+.animate-gradient { background-size: 200% auto; animation: gradientShift 4s ease infinite; }
+.animation-delay-100 { animation-delay: 0.1s; }
+.animation-delay-200 { animation-delay: 0.2s; }
+.animation-delay-300 { animation-delay: 0.3s; }
+.animation-delay-400 { animation-delay: 0.4s; }
+.animation-delay-500 { animation-delay: 0.5s; }
+.animation-delay-600 { animation-delay: 0.6s; }
+\`\`\`
+
+### SCROLL-TRIGGERED ANIMATIONS (Required)
+
+Every section with cards/items MUST use IntersectionObserver for staggered reveal:
+
+\`\`\`tsx
+// Required pattern in every component with repeating items
+const [visible, setVisible] = useState(false);
+const ref = useRef<HTMLDivElement>(null);
+
+useEffect(() => {
+  const observer = new IntersectionObserver(
+    ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+    { threshold: 0.1 }
+  );
+  if (ref.current) observer.observe(ref.current);
+  return () => observer.disconnect();
+}, []);
+
+// Then on the grid container:
+<div ref={ref} className={visible ? 'animate-fade-in-up' : 'opacity-0'}>
+\`\`\`
+
 ### MICRO-INTERACTIONS (Required on all projects)
-- Cards: hover:-translate-y-1 hover:border-purple-500/30 transition-all duration-500
-- Buttons: hover:shadow-xl hover:shadow-purple-500/25 hover:-translate-y-0.5 transition-all duration-300
+- Cards: hover:-translate-y-2 hover:border-purple-500/30 transition-all duration-500 hover:shadow-2xl hover:shadow-purple-500/10
+- Buttons: hover:shadow-xl hover:shadow-purple-500/25 hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.98]
 - Images: group-hover:scale-110 transition-transform duration-700
 - Links: hover:text-white transition-colors duration-200
-- Icons: group-hover:scale-110 transition-transform duration-300
-- Stagger animations on card grids (animation-delay-100, 200, 300)
+- Icons: group-hover:scale-110 group-hover:rotate-3 transition-all duration-300
+- Stagger animations on card grids (animation-delay-100, 200, 300, etc.)
 
-### VISUAL DEPTH (Required)
-- Cards: bg-white/[0.03] backdrop-blur-sm border border-white/[0.06]
-- Hover state: hover:bg-white/[0.06] hover:border-purple-500/30
+### GLASSMORPHISM v2 (Required)
+- Cards: bg-white/[0.03] backdrop-blur-md border border-white/[0.06] shadow-xl shadow-black/20
+- Hover state: hover:bg-white/[0.08] hover:border-purple-500/30 hover:shadow-purple-500/10
 - Hero overlay: bg-gradient-to-b from-black/70 via-black/50 to-zinc-900
-- CTA sections: layered gradients with backdrop-blur-3xl
+- Navbar: bg-zinc-900/60 backdrop-blur-2xl border-b border-white/[0.04] shadow-2xl shadow-black/40
+- CTA sections: layered gradients with multiple radial-gradient overlays
 - Buttons: shadow-lg shadow-purple-500/25 on primary CTAs
-- Footer: border-t border-white/5 (subtle, not heavy)
+
+### LAYERED SHADOW SYSTEM
+- Elevated cards: shadow-xl shadow-black/20, hover:shadow-2xl hover:shadow-purple-500/10
+- Floating elements: shadow-2xl shadow-black/30 
+- Buttons: shadow-lg shadow-purple-500/25
+- Modals: shadow-2xl shadow-black/50
+- Never use bare shadow-md or shadow-sm alone — always layer with color
+
+### BACKGROUND DEPTH & EFFECTS
+- Use radial gradients for spotlight effects behind hero content
+- Add floating abstract shapes with animate-float and varying opacity (opacity-5 to opacity-20)
+- Use gradient mesh patterns: multiple overlapping radial-gradient backgrounds
+- Subtle noise texture: background-image with SVG noise filter at 2-5% opacity
 
 ### COLOR PALETTES BY PROJECT TYPE
 - Default: Purple-Pink (from-purple-600 to-pink-600)
-- Tech/SaaS: Blue-Cyan (from-blue-600 to-cyan-600) 
+- Tech/SaaS: Blue-Cyan (from-blue-600 to-cyan-600)
 - Finance: Emerald-Teal (from-emerald-600 to-teal-600)
 - Food/Restaurant: Orange-Red (from-orange-600 to-red-600)
 - Health/Fitness: Green-Emerald (from-green-600 to-emerald-600)
 - Luxury/Fashion: Gold-Amber (from-amber-500 to-yellow-500)
 - Creative: Violet-Fuchsia (from-violet-600 to-fuchsia-600)
+
+### VISUAL CHECKLIST (Every project MUST have):
+1. ✓ Gradient text on at least 2 headings
+2. ✓ Animated hero badge/pill with backdrop-blur
+3. ✓ Staggered card grid with scroll-triggered animations
+4. ✓ Floating background elements (abstract shapes, glow orbs)
+5. ✓ Smooth scroll behavior (html { scroll-behavior: smooth })
+6. ✓ At least one section with radial gradient spotlight effect
+7. ✓ Layered shadows on all cards (shadow-xl + hover:shadow-2xl)
+8. ✓ Group hover effects with icon scaling
+9. ✓ Active states on all buttons (active:scale-[0.98])
+10. ✓ Border gradient on at least one card (border-gradient via pseudo-element)
 
 ### CONTENT QUALITY (Mandatory)
 - NEVER use "Lorem ipsum" or single-word placeholders
