@@ -77,30 +77,63 @@ function generatePersonaResponse(
   const hasHero = files.some(f => f.path.toLowerCase().includes("hero"));
   const hasPricing = files.some(f => f.path.toLowerCase().includes("pricing"));
   const hasContact = files.some(f => f.path.toLowerCase().includes("contact"));
+  const hasFooter = files.some(f => f.path.toLowerCase().includes("footer"));
+  const hasGallery = files.some(f => f.path.toLowerCase().includes("gallery"));
 
   if (!hasContact) suggestions.push("Add a contact form");
   if (!hasPricing) suggestions.push("Add a pricing section");
   if (hasHero) suggestions.push("Change the hero image or colors");
   suggestions.push("Browse the [Components Library](/dashboard/components)");
-  suggestions.push("Try a different style from the [Backgrounds Library](/dashboard/backgrounds)");
 
   const p = prompt.toLowerCase();
-  let emoji = "🎨";
   let projectType = "website";
-  if (p.includes("bakery")) { emoji = "🥐"; projectType = "bakery landing page"; }
-  else if (p.includes("portfolio")) { emoji = "✨"; projectType = "portfolio site"; }
-  else if (p.includes("shop") || p.includes("store")) { emoji = "🛒"; projectType = "e-commerce site"; }
-  else if (p.includes("dashboard")) { emoji = "📊"; projectType = "dashboard"; }
-  else if (p.includes("blog")) { emoji = "📝"; projectType = "blog"; }
-  else if (p.includes("saas")) { emoji = "🚀"; projectType = "SaaS landing page"; }
+  if (p.includes("bakery")) projectType = "bakery website";
+  else if (p.includes("portfolio")) projectType = "portfolio site";
+  else if (p.includes("shop") || p.includes("store")) projectType = "e-commerce store";
+  else if (p.includes("dashboard")) projectType = "dashboard";
+  else if (p.includes("blog")) projectType = "blog";
+  else if (p.includes("saas")) projectType = "SaaS landing page";
+  else if (p.includes("restaurant") || p.includes("food")) projectType = "restaurant site";
+  else if (p.includes("fitness") || p.includes("gym")) projectType = "fitness site";
+  else if (p.includes("agency")) projectType = "agency site";
 
-  const fileList = files.map(f => f.path.split("/").pop()).slice(0, 5).join(", ");
+  // Build a natural, conversational description of what was built
+  const sections: string[] = [];
+  if (hasNavbar) sections.push("a responsive navbar with mobile menu");
+  if (hasHero) sections.push("a full-screen hero section with gradient overlay");
+  if (hasGallery) sections.push("an image gallery");
+  if (hasPricing) sections.push("a pricing section");
+  if (hasContact) sections.push("a contact form");
+  if (hasFooter) sections.push("a footer with social links");
+
+  const sectionList = sections.length > 0
+    ? sections.slice(0, 3).join(", ") + (sections.length > 3 ? `, and ${sections.length - 3} more sections` : "")
+    : `${files.length} components`;
+
+  // Multiple response templates for variety
+  const newProjectResponses = [
+    `Here's your ${projectType}! I built it with ${sectionList}. The design uses smooth scroll animations, gradient text effects, and glass-morphism elements throughout.\n\nEverything is responsive and ready to preview — take a look on the right! 👉`,
+    `Your ${projectType} is ready! I've put together ${files.length} files including ${sectionList}. I focused on making the UI feel polished with layered shadows, hover transitions, and staggered animations.\n\nCheck out the preview to see it in action.`,
+    `Done! I created a complete ${projectType} with ${sectionList}. The layout is fully responsive with modern design patterns — backdrop blur effects, gradient accents, and micro-interactions on buttons and cards.\n\nHit preview to see it live!`,
+  ];
+
+  const editResponses = [
+    `I've updated ${files.length} file(s) based on your request. The changes are live in the preview — take a look and let me know if you'd like any adjustments!`,
+    `Changes applied! I modified ${files.length} file(s) to match what you described. Check the preview to see the updates.`,
+    `Done! ${files.length} file(s) updated. The preview should reflect the changes now — let me know what you think!`,
+  ];
+
+  const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
   let message: string;
   if (isNewProject) {
-    message = `${emoji} Creating your ${projectType}...\n\n{THINKING_INDICATOR}\n\nDone! I created ${files.length} files including ${fileList}. Everything's styled and ready to preview!\n\n💡 **Next steps:**\n${suggestions.slice(0, 3).map(s => `- ${s}`).join("\n")}`;
+    message = pick(newProjectResponses);
   } else {
-    message = `Making those changes now...\n\n{THINKING_INDICATOR}\n\nDone! I updated ${files.length} file(s). Take a look at the preview!\n\n💡 **Want more?**\n${suggestions.slice(0, 2).map(s => `- ${s}`).join("\n")}`;
+    message = pick(editResponses);
+  }
+
+  if (suggestions.length > 0 && isNewProject) {
+    message += `\n\n**What's next?**\n${suggestions.slice(0, 3).map(s => `• ${s}`).join("\n")}`;
   }
 
   return { message, routes, suggestions: suggestions.slice(0, 3) };

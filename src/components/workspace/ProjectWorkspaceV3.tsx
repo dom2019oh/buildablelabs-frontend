@@ -343,27 +343,10 @@ export default function ProjectWorkspaceV3() {
     // 1) Save user message immediately
     await sendMessage.mutateAsync({ content, role: 'user' });
 
-    // 2) Save a placeholder assistant message with "generating" status
-    //    This persists through page refreshes
-    let placeholderMsgId: string | null = null;
-    try {
-      const { data: placeholderMsg } = await supabase
-        .from('project_messages')
-        .insert({
-          project_id: projectId!,
-          user_id: (await supabase.auth.getUser()).data.user?.id!,
-          role: 'assistant',
-          content: '🔄 Generating your project...',
-          metadata: { status: 'generating', prompt: content.slice(0, 100) },
-        })
-        .select('id')
-        .single();
-      
-      placeholderMsgId = placeholderMsg?.id || null;
-      setPendingAssistantMsgId(placeholderMsgId);
-    } catch (e) {
-      console.error('[Chat] Failed to save placeholder message:', e);
-    }
+    // 2) We do NOT create a placeholder message anymore.
+    //    Instead, the thinking indicator shows in the UI while generating.
+    //    On completion, we save the AI's human response first, then the file summary.
+    //    This avoids doubled messages and gives a ChatGPT-like flow.
 
     // Get conversation history
     const history = messages.map(m => ({
@@ -410,36 +393,10 @@ export default function ProjectWorkspaceV3() {
           }
         }
 
-        // Update the placeholder message with the real result
+        // ChatGPT-style: First save the AI's human text response, then the file summary
         const fileNames = files.map(f => f.path);
-        const displayContent = `✅ Created ${files.length} file(s):\n${fileNames.map(f => `• ${f}`).join('\n')}`;
-        
-        if (placeholderMsgId) {
-          await supabase
-            .from('project_messages')
-            .update({
-              content: displayContent,
-              metadata: {
-                filesCreated: fileNames,
-                sessionId: metadata?.sessionId,
-                status: 'success',
-              },
-            })
-            .eq('id', placeholderMsgId);
-          setPendingAssistantMsgId(null);
-        } else {
-          // Fallback: insert a new message
-          await sendMessage.mutateAsync({
-            content: displayContent,
-            role: 'assistant',
-            metadata: {
-              filesCreated: fileNames,
-              sessionId: metadata?.sessionId,
-            },
-          });
-        }
 
-        // Save AI personalized message separately so it persists independently
+        // 1) Save AI personalized message FIRST (the human response)
         if (metadata?.aiMessage) {
           await sendMessage.mutateAsync({
             content: metadata.aiMessage as string,
@@ -447,6 +404,19 @@ export default function ProjectWorkspaceV3() {
             metadata: { type: 'ai_response', sessionId: metadata?.sessionId },
           });
         }
+
+        // 2) Then save the file summary below it
+        const displayContent = `✅ Created ${files.length} file(s):\n${fileNames.map(f => `• ${f}`).join('\n')}`;
+        await sendMessage.mutateAsync({
+          content: displayContent,
+          role: 'assistant',
+          metadata: {
+            type: 'file_summary',
+            filesCreated: fileNames,
+            sessionId: metadata?.sessionId,
+            status: 'success',
+          },
+        });
 
         // Switch to preview mode
         if (files.length > 0) {
@@ -457,23 +427,11 @@ export default function ProjectWorkspaceV3() {
       // On error
       async (error) => {
         const errorContent = `❌ Error: ${error.message}`;
-        
-        if (placeholderMsgId) {
-          await supabase
-            .from('project_messages')
-            .update({
-              content: errorContent,
-              metadata: { status: 'error', error: error.message },
-            })
-            .eq('id', placeholderMsgId);
-          setPendingAssistantMsgId(null);
-        } else {
-          await sendMessage.mutateAsync({
-            content: errorContent,
-            role: 'assistant',
-            metadata: { status: 'error' },
-          });
-        }
+        await sendMessage.mutateAsync({
+          content: errorContent,
+          role: 'assistant',
+          metadata: { status: 'error', error: error.message },
+        });
       }
     );
   }, [workspaceId, messages, workspaceFiles, generate, sendMessage, refetchFiles, createVersion, previewHtml, projectId, updateProject, setSelectedFile, toast]);
