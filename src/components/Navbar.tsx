@@ -56,7 +56,7 @@ export default function Navbar() {
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2">
           <img src={buildableLogo} alt="Buildable" className="h-7 w-7 object-contain" />
-          <img src={buildableText} alt="Buildable" className="h-6 object-contain" />
+          <span className="font-brand text-2xl text-white tracking-tight">Buildable</span>
         </Link>
 
         {/* Links and account on the right */}
