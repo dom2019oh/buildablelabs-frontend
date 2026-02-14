@@ -4,31 +4,38 @@ import { Settings, BookOpen, HelpCircle, Users, LogOut, User } from "lucide-reac
 import buildableLogo from "@/assets/buildable-logo.png";
 import buildableText from "@/assets/buildable-text.svg";
 import { useAuth } from "@/hooks/useAuth";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const navLinks = [{
-  href: "/",
-  label: "Home"
-}, {
-  href: "/pricing",
-  label: "Pricing"
-}, {
-  href: "/docs",
-  label: "Docs"
-}, {
-  href: "/explore",
-  label: "Explore"
-}];
+const navLinks = [
+  {
+    href: "/",
+    label: "Home",
+  },
+  {
+    href: "/pricing",
+    label: "Pricing",
+  },
+  {
+    href: "/docs",
+    label: "Docs",
+  },
+  {
+    href: "/explore",
+    label: "Explore",
+  },
+];
 
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const {
-    user,
-    profile,
-    signOut
-  } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const handleSignOut = async () => {
     await signOut();
     navigate("/");
@@ -48,13 +55,13 @@ export default function Navbar() {
       <div className="w-full max-w-6xl mx-auto flex items-center justify-between">
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2.5">
-          <img src={buildableLogo} alt="Buildable" className="h-8 w-8 object-contain" />
+          <img src={buildableLogo} alt="Buildable" className="h-16 w-16 object-contain" />
           <img src={buildableText} alt="Buildable" className="h-7 object-contain" />
         </Link>
 
         {/* Links and account on the right */}
         <div className="flex items-center gap-8">
-          {navLinks.map(link => (
+          {navLinks.map((link) => (
             <Link
               key={link.href}
               to={link.href}
@@ -79,7 +86,11 @@ export default function Navbar() {
                   </Avatar>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 bg-popover border border-border shadow-lg z-[100]" sideOffset={8}>
+              <DropdownMenuContent
+                align="end"
+                className="w-64 bg-popover border border-border shadow-lg z-[100]"
+                sideOffset={8}
+              >
                 <div className="px-3 py-3 border-b border-border">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
@@ -129,7 +140,10 @@ export default function Navbar() {
                 </div>
                 <DropdownMenuSeparator />
                 <div className="py-1">
-                  <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-3 px-3 py-2 cursor-pointer text-destructive focus:text-destructive">
+                  <DropdownMenuItem
+                    onClick={handleSignOut}
+                    className="flex items-center gap-3 px-3 py-2 cursor-pointer text-destructive focus:text-destructive"
+                  >
                     <LogOut className="h-4 w-4" />
                     <span>Sign out</span>
                   </DropdownMenuItem>
