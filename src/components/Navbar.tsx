@@ -50,13 +50,13 @@ export default function Navbar() {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="fixed top-0 left-0 right-0 z-50 px-6 py-4"
+      className="fixed top-0 left-0 right-0 z-50 px-6 py-3"
     >
       <div className="w-full max-w-6xl mx-auto flex items-center justify-between">
         {/* Logo on the left */}
         <Link to="/" className="flex items-center gap-2">
-          <img src={buildableLogo} alt="Buildable" className="h-8 w-8 object-contain" />
-          <img src={buildableText} alt="Buildable" className="h-28 object-contain -ml-1" />
+          <img src={buildableLogo} alt="Buildable" className="h-7 w-7 object-contain" />
+          <img src={buildableText} alt="Buildable" className="h-6 object-contain" />
         </Link>
 
         {/* Links and account on the right */}
