@@ -5,6 +5,7 @@ import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import buildableLogo from '@/assets/buildable-logo.png';
 import { supabase } from '@/integrations/supabase/client';
+import { lovable } from '@/integrations/lovable';
 import { toast } from 'sonner';
 
 export default function Login() {
@@ -65,11 +66,8 @@ export default function Login() {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
+    const { error } = await lovable.auth.signInWithOAuth('google', {
+      redirect_uri: `${window.location.origin}/dashboard`,
     });
     setGoogleLoading(false);
     
